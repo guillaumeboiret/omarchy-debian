@@ -1,0 +1,19 @@
+#!/bin/bash
+# Debian port: stand-in for Omarchy's omasnap (Arch-only). Region screenshot with grim/slurp,
+# then copy and/or save; without --copy/--save it opens swappy to annotate.
+copy=0; save=0; notify=0; mode=region
+for a in "$@"; do case "$a" in --copy) copy=1;; --save) save=1;; --notify) notify=1;; fullscreen|screen|output) mode=screen;; window) mode=window;; esac; done
+dir="${OMASNAP_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots}"; mkdir -p "$dir"
+file="$dir/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+case $mode in
+  region) geo=$(slurp -d) || exit 0 ;;
+  window) geo=$(hyprctl activewindow -j | jq -r '"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"') ;;
+  screen) geo="" ;;
+esac
+shot() { if [ -n "$geo" ]; then grim -g "$geo" "$@"; else grim "$@"; fi; }
+if (( copy == 0 && save == 0 )); then shot - | swappy -f - -o "$file"; exit 0; fi
+shot "$file" || exit 1
+(( copy )) && wl-copy -t image/png < "$file"
+(( save == 0 && copy )) && rm -f "$file"
+(( notify )) && notify-send -a Screenshot -i camera-photo "Screenshot $([ $save = 1 ] && echo saved || echo copied)" "$([ $save = 1 ] && basename "$file")"
+exit 0

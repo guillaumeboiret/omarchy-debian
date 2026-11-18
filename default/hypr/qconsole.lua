@@ -105,7 +105,7 @@ local function fit(monitor)
 
   -- Monitor dimensions are in physical pixels; gaps are logical, so the scale
   -- has to come out before the reserved area (already logical) comes off.
-  local reserved = monitor.reserved
+  local reserved = monitor.reserved or { top = 0, bottom = 0, left = 0, right = 0 }  -- Debian port: 0.55 has no monitor.reserved
   height = height / monitor.scale - reserved.top - reserved.bottom
   width = width / monitor.scale - reserved.left - reserved.right
 

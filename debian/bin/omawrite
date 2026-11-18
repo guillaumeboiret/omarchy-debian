@@ -1,0 +1,3 @@
+#!/bin/bash
+# Debian port: Omarchy's omawrite → Neovim in a terminal
+exec xdg-terminal-exec nvim "$@"

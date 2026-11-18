@@ -1,0 +1,3 @@
+#!/bin/bash
+# Debian port: herdr isn't packaged for Debian; no-op so autostart stays quiet.
+exit 0
