@@ -24,4 +24,12 @@ mkdir -p /etc/xkb && cp -a "$OM/etc/xkb/." /etc/xkb/ && chown -R root:root /etc/
 # 5. Debian packages the Omarchy shell needs beyond the main app list
 apt-get install -y qt6-image-formats-plugins qml6-module-qtquick-effects qml6-module-qtmultimedia qml6-module-qt-labs-qmlmodels
 
+# 6. Build tools for compiling Omarchy's own apps (debian/omarchy-debian apps)
+apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
+  qt6-base-dev qt6-base-private-dev qt6-declarative-dev qt6-declarative-private-dev qt6-multimedia-dev \
+  qt6-shadertools-dev qt6-svg-dev qt6-tools-dev qt6-wayland-dev layer-shell-qt liblayershellqtinterface-dev \
+  libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev libarchive-dev libpoppler-qt6-dev libqpdf-dev \
+  libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
+  libavcodec-dev libavformat-dev libswscale-dev
+
 echo "System part done."

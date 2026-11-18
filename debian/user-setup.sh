@@ -31,7 +31,7 @@ sed -i 's/FileChooser=folio;gtk/FileChooser=gtk/' "$HOME/.config/xdg-desktop-por
 mkdir -p "$HOME/.config/uwsm"
 cat > "$HOME/.config/uwsm/env" <<UWSM
 export OMARCHY_PATH=/usr/share/omarchy
-export PATH="/usr/share/omarchy/bin:$OM/debian/bin:\$PATH"
+export PATH="/usr/share/omarchy/bin:$HOME/.local/bin:$OM/debian/bin:\$PATH"
 . /usr/share/omarchy/default/uwsm/env.d/10-omarchy
 UWSM
 

@@ -8,6 +8,14 @@
 
 set -e
 
+# Debian port: there is no pacman here. Update Omarchy, its apps and Flatpaks with the Debian
+# updater, then the Debian packages with apt (the reason lives in debian/omarchy-debian).
+if [[ -f /etc/debian_version ]]; then
+  "$OMARCHY_PATH/debian/omarchy-debian" update
+  sudo apt update && sudo apt upgrade
+  exit
+fi
+
 update_stay_awake_stopped=0
 sudo_keepalive_pid=""
 

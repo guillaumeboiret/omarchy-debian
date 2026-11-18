@@ -1,0 +1,3 @@
+#!/bin/bash
+# Debian port: Flatpak launcher
+exec flatpak run org.localsend.localsend_app "$@"
