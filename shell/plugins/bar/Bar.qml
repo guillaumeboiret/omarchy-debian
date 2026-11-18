@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import QtQml.Models
+import Qt.labs.qmlmodels  // Debian port: DelegateChooser lives here on Qt 6.8
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
