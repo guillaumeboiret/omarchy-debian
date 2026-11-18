@@ -1,0 +1,3 @@
+#!/bin/bash
+# Debian port: Flatpak launcher
+exec flatpak run com.github.PintaProject.Pinta "$@"

@@ -1,0 +1,230 @@
+#!/bin/bash
+# omarchy-debian — install and update the Omarchy desktop on Debian (Asahi / aarch64).
+#
+#   omarchy-debian update            Update everything: Omarchy itself (rebasing the Debian patches),
+#                                    Omarchy's own apps, Flatpaks, Neovim plugins
+#   omarchy-debian apps              List Omarchy apps with installed / available versions
+#   omarchy-debian apps install [N…] Build + install apps (default: all supported)
+#   omarchy-debian apps update       Rebuild only apps whose recipe version changed
+#   omarchy-debian apps remove N     Uninstall an app
+#
+# Apps are built from Omarchy's own Arch recipes (github.com/omacom/omarchy-pkgs, PKGBUILDs) with a
+# small makepkg-compatible runner, and installed into ~/.local (no root needed). Recipes that need
+# a newer toolchain than Debian ships are overridden in debian/recipes/<name>.PKGBUILD.
+set -euo pipefail
+
+OM="$HOME/.local/share/omarchy"
+DEB="$OM/debian"
+PKGS="$HOME/.local/src/omarchy-pkgs"
+WORK="$HOME/.cache/omarchy-debian/build"
+DB="$HOME/.local/state/omarchy-debian/installed"
+PREFIX="$HOME/.local"
+CARCH=aarch64
+
+# Apps we build. Not here (and why): hype (needs Qt ≥ 6.9), omarchy-hyprland-titlebars (needs
+# Hyprland ≥ 0.56), gliff (rustc ≥ 1.87), superwhisper-bin (closed source, Arch build),
+# omarchy-local-ai (large AI stack), omarchy-power-profiles-daemon (system daemon).
+APPS=(omasnap folio omaview omacut omawrite omacalc plain signed monologue fantasi
+      ttfx omarchy-screensaver owe qtengine tobi-try aether mise-bin cliamp herdr disktree-bin
+      neovim omarchy-nvim omarchy-themes-intros)
+
+c_b=$'\e[1m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_0=$'\e[0m'
+say()  { printf '%s==>%s %s\n' "$c_b$c_g" "$c_0$c_b" "$*$c_0"; }
+warn() { printf '%s==> WARNING:%s %s\n' "$c_y" "$c_0" "$*" >&2; }
+die()  { printf '%s==> ERROR:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
+
+mkdir -p "$WORK" "$DB"
+
+sync_recipes() {
+  if [[ -d $PKGS/.git ]]; then
+    say "Updating Omarchy app recipes"
+    git -C "$PKGS" pull -q --ff-only
+  else
+    say "Downloading Omarchy app recipes"
+    git clone -q --depth 1 https://github.com/omacom/omarchy-pkgs.git "$PKGS"
+  fi
+}
+
+recipe_dir() {  # Debian override first, then upstream
+  if [[ -f $DEB/recipes/$1.PKGBUILD ]]; then echo "$DEB/recipes/$1"
+  elif [[ -f $PKGS/pkgbuilds/$1/PKGBUILD ]]; then echo "$PKGS/pkgbuilds/$1"
+  else return 1; fi
+}
+recipe_file() { [[ -f $DEB/recipes/$1.PKGBUILD ]] && echo "$DEB/recipes/$1.PKGBUILD" || echo "$PKGS/pkgbuilds/$1/PKGBUILD"; }
+
+recipe_version() { ( set +eu; source "$(recipe_file "$1")" >/dev/null 2>&1; echo "${epoch:+$epoch:}$pkgver-$pkgrel" ); }
+installed_version() { [[ -f $DB/$1.version ]] && cat "$DB/$1.version" || echo "-"; }
+
+fetch_sources() {  # $1=name  (runs in $srcdir, PKGBUILD already sourced)
+  local startdir=$1 entry name url
+  local all=("${source[@]}")
+  local arch_var="source_$CARCH[@]"; all+=("${!arch_var}")
+  local sums=("${sha256sums[@]}"); local arch_sums="sha256sums_$CARCH[@]"; sums+=("${!arch_sums}")
+  local i=0
+  for entry in "${all[@]}"; do
+    [[ -z $entry ]] && continue
+    if [[ $entry == *::* ]]; then name=${entry%%::*}; url=${entry#*::}; else url=$entry; name=${url##*/}; fi
+    case $url in
+      git+*)
+        local repo=${url#git+} ref=""
+        [[ $repo == *#commit=* ]] && { ref=${repo##*#commit=}; repo=${repo%%#*}; }
+        [[ $repo == *#tag=* ]]    && { ref=${repo##*#tag=};    repo=${repo%%#*}; }
+        [[ $repo == *#branch=* ]] && { ref=${repo##*#branch=}; repo=${repo%%#*}; }
+        git clone -q "$repo" "$name"
+        [[ -n $ref ]] && git -C "$name" checkout -q "$ref"
+        ;;
+      http://*|https://*)
+        curl -fsSL --retry 3 -o "$name" "$url"
+        local want=${sums[$i]:-SKIP}
+        if [[ $want != SKIP && -n $want ]]; then
+          echo "$want  $name" | sha256sum -c --quiet - || die "checksum mismatch for $name"
+        fi
+        ;;
+      *) cp -a "$startdir/$url" "$name" ;;  # file shipped next to the PKGBUILD
+    esac
+    # extract archives unless listed in noextract
+    if [[ " ${noextract[*]:-} " != *" $name "* ]]; then
+      case $name in
+        *.tar.gz|*.tgz|*.tar.xz|*.tar.zst|*.tar.bz2|*.tar) tar -xf "$name" ;;
+        *.zip) unzip -q -o "$name" ;;
+      esac
+    fi
+    i=$((i+1))
+  done
+}
+
+relocate() {  # move $pkgdir/usr → ~/.local, fixing absolute /usr paths
+  local name=$1 pkgdir=$2 list="$DB/$1.files"
+  [[ -d $pkgdir/usr ]] || { warn "$name installed nothing under /usr"; return; }
+  # Rewrite absolute /usr/… paths inside desktop files, services and symlinks
+  find "$pkgdir/usr" -type f \( -name '*.desktop' -o -name '*.service' -o -name '*.portal' \) -print0 |
+    xargs -0 -r sed -i -E "s#(Exec|TryExec|ExecStart)=/usr/#\1=$PREFIX/#g; s#=/usr/bin/#=$PREFIX/bin/#g"
+  find "$pkgdir/usr" -type l | while read -r l; do
+    t=$(readlink "$l"); [[ $t == /usr/* ]] && ln -sfn "$PREFIX/${t#/usr/}" "$l"
+  done
+  # usr/share/omarchy → Omarchy's own tree (theme intros etc.)
+  if [[ -d $pkgdir/usr/share/omarchy ]]; then
+    cp -a "$pkgdir/usr/share/omarchy/." "$OM/"
+    (cd "$pkgdir/usr/share/omarchy" && find . -type f | sed "s#^\.#$OM#") > "$list.omarchy"
+    rm -rf "$pkgdir/usr/share/omarchy"
+  fi
+  (cd "$pkgdir/usr" && find . \( -type f -o -type l \) | sed "s#^\.#$PREFIX#") > "$list"
+  cp -a "$pkgdir/usr/." "$PREFIX/"
+}
+
+build_app() {
+  local name=$1 dir pkgfile build
+  dir=$(recipe_dir "$name") || { warn "no recipe for $name"; return 1; }
+  pkgfile=$(recipe_file "$name")
+  build="$WORK/$name"; rm -rf "$build"; mkdir -p "$build/src" "$build/pkg"
+  say "Building $name $(recipe_version "$name")"
+  # NB: the subshell must not sit in a `|| …` context, or bash silently disables `set -e` inside it
+  local rc=0
+  set +e
+  (
+    set -e +u
+    export PATH="$PREFIX/bin:$PATH" CARCH startdir="$dir" srcdir="$build/src" pkgdir="$build/pkg" MAKEFLAGS="-j$(nproc)"
+    cd "$srcdir"
+    # shellcheck disable=SC1090
+    source "$pkgfile"
+    fetch_sources "$dir"
+    cd "$srcdir"; declare -F prepare >/dev/null && prepare
+    cd "$srcdir"; declare -F build   >/dev/null && build
+    cd "$srcdir"
+    if declare -F "package_$name" >/dev/null; then "package_$name"; else package; fi
+  ) > "$build/log" 2>&1
+  rc=$?
+  set -e
+  if (( rc != 0 )); then warn "$name failed — see $build/log"; tail -15 "$build/log" >&2; return 1; fi
+  remove_files "$name"
+  relocate "$name" "$build/pkg"
+  recipe_version "$name" > "$DB/$name.version"
+  say "Installed $name"
+}
+
+remove_files() {
+  local f
+  for f in "$DB/$1.files" "$DB/$1.files.omarchy"; do
+    [[ -f $f ]] && while read -r p; do rm -f "$p"; done < "$f"
+  done
+  rm -f "$DB/$1.files" "$DB/$1.files.omarchy"
+}
+
+post_install() {
+  update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+  gtk-update-icon-cache -q -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
+  systemctl --user daemon-reload 2>/dev/null || true
+  # Omarchy's Neovim setup: seed ~/.config/nvim once (never overwrite the user's edits)
+  if [[ -d $PREFIX/share/omarchy-nvim/config && ! -e $HOME/.config/nvim ]]; then
+    cp -a "$PREFIX/share/omarchy-nvim/config" "$HOME/.config/nvim"
+    ln -snf "$HOME/.local/state/omarchy/current/theme/neovim.lua" "$HOME/.config/nvim/lua/plugins/theme.lua"
+  fi
+}
+
+apps_cmd() {
+  local sub=${1:-list}; shift || true
+  case $sub in
+    list)
+      [[ -d $PKGS ]] || sync_recipes
+      printf '%-28s %-22s %s\n' APP INSTALLED AVAILABLE
+      for a in "${APPS[@]}"; do printf '%-28s %-22s %s\n' "$a" "$(installed_version "$a")" "$(recipe_version "$a" 2>/dev/null || echo '?')"; done ;;
+    install)
+      sync_recipes
+      local list=("$@"); (( ${#list[@]} )) || list=("${APPS[@]}")
+      local failed=()
+      for a in "${list[@]}"; do build_app "$a" || failed+=("$a"); done
+      post_install
+      (( ${#failed[@]} )) && warn "failed: ${failed[*]}" || true ;;
+    update)
+      sync_recipes
+      local failed=() n=0
+      for a in "${APPS[@]}"; do
+        [[ $(installed_version "$a") == - ]] && continue
+        [[ $(installed_version "$a") == "$(recipe_version "$a")" ]] && continue
+        n=$((n+1)); build_app "$a" || failed+=("$a")
+      done
+      post_install
+      (( n == 0 )) && say "All Omarchy apps are up to date"
+      (( ${#failed[@]} )) && warn "failed: ${failed[*]}" || true ;;
+    remove)
+      for a in "$@"; do remove_files "$a"; rm -f "$DB/$a.version"; say "Removed $a"; done
+      post_install ;;
+    *) die "unknown: apps $sub" ;;
+  esac
+}
+
+update_omarchy() {
+  say "Updating Omarchy (keeping the Debian patches on top)"
+  cd "$OM"
+  [[ -n $(git status --porcelain --untracked-files=no) ]] && die "uncommitted changes in $OM — commit or stash them first"
+  git fetch -q origin
+  local before; before=$(git rev-parse HEAD)
+  if ! git rebase -q origin/HEAD 2>/dev/null && ! git rebase -q "origin/$(git remote show origin | sed -n 's/.*HEAD branch: //p')"; then
+    git rebase --abort 2>/dev/null || true
+    die "a Debian patch no longer applies on the new Omarchy — nothing was changed. Ask Claude to refresh the port."
+  fi
+  if [[ $(git rev-parse HEAD) != "$before" ]]; then
+    say "Checking the new Hyprland config"
+    if ! OMARCHY_PATH=/usr/share/omarchy Hyprland --verify-config -c "$HOME/.config/hypr/hyprland.lua" 2>&1 | grep -q "config ok"; then
+      git reset -q --hard "$before"
+      die "the new Omarchy config doesn't load on this Hyprland — rolled back. Ask Claude to refresh the port."
+    fi
+    git log --oneline "$before..HEAD" | grep -v "Debian port" | head -20 | sed 's/^/    /'
+    command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
+  else
+    say "Omarchy is already up to date"
+  fi
+}
+
+case ${1:-help} in
+  update)
+    update_omarchy
+    apps_cmd update
+    say "Updating Flatpaks";  flatpak update --user -y --noninteractive >/dev/null 2>&1 || warn "flatpak update failed"
+    if command -v nvim >/dev/null && [[ -d $HOME/.config/nvim ]]; then
+      say "Updating Neovim plugins"; nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 || warn "Neovim plugin update failed"
+    fi
+    say "Done. (Debian packages are updated separately: sudo apt update && sudo apt upgrade)" ;;
+  apps) shift; apps_cmd "$@" ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac
