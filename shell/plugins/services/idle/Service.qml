@@ -22,6 +22,8 @@ Item {
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
   readonly property bool screensaverEnabled: screensaverTimeoutSeconds > 0
   readonly property bool lockEnabled: lockTimeoutSeconds > 0
+  // Debian port: "lockAfterScreensaver": true in shell.json idle → dismissing the screensaver asks for the password.
+  readonly property bool lockAfterScreensaver: idleConfig.lockAfterScreensaver === true
   readonly property bool idleTimersEnabled: screensaverEnabled || lockEnabled
   readonly property int firstIdleTimeoutSeconds: IdleModel.firstIdleTimeout(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: IdleModel.delayAfterFirstIdle(screensaverTimeoutSeconds, firstIdleTimeoutSeconds)
@@ -148,8 +150,12 @@ Item {
     userReturned()
   }
 
-  function userReturned() {
+  function userReturned(inLaunchGrace) {
     // Input the screensaver never sees (a bound media key, a touchscreen) still means the user is back.
+    if (root.screensaverStartedThisCycle && root.lockAfterScreensaver && !inLaunchGrace) {
+      root.lockSystem("screensaver-dismissed")
+      return
+    }
     if (root.screensaverStartedThisCycle) screensaverStopProcess.running = true
     cancelIdleCycle("activity")
   }
@@ -157,7 +163,8 @@ Item {
   function handleScreensaverExited() {
     // Closing while the user is active is a dismissal, even inside the launch grace.
     if (root.idleEnabled && root.idledThisCycle && root.screensaverStartedThisCycle && !idleMonitor.isIdle) {
-      cancelIdleCycle("screensaver-dismissed")
+      if (root.lockAfterScreensaver) lockSystem("screensaver-dismissed")
+      else cancelIdleCycle("screensaver-dismissed")
     }
   }
 
@@ -180,6 +187,7 @@ Item {
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      lockAfterScreensaver: root.lockAfterScreensaver,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       timers: {
@@ -270,7 +278,7 @@ Item {
     onTriggered: {
       if (!root.idleEnabled || !root.idledThisCycle || !root.lockEnabled) return
       // A deadline inside the launch grace must not lock a user who is already back.
-      if (root.screensaverStartedThisCycle && screensaverLaunchGraceTimer.running && !idleMonitor.isIdle) root.userReturned()
+      if (root.screensaverStartedThisCycle && screensaverLaunchGraceTimer.running && !idleMonitor.isIdle) root.userReturned(true)
       else root.lockSystem("lock-timeout")
     }
   }
@@ -280,7 +288,7 @@ Item {
     interval: 3000
     repeat: false
     onTriggered: {
-      if (root.idleEnabled && root.idledThisCycle && root.screensaverStartedThisCycle && !idleMonitor.isIdle) root.userReturned()
+      if (root.idleEnabled && root.idledThisCycle && root.screensaverStartedThisCycle && !idleMonitor.isIdle) root.userReturned(true)
     }
   }
 
