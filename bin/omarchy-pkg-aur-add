@@ -3,6 +3,11 @@
 # omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
 # omarchy:args=<packages...>
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" aur-add "$@"
+fi
+
 if omarchy-pkg-missing "$@"; then
   yay -S --noconfirm --needed -- "$@" || exit 1
 fi

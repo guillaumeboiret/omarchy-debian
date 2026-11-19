@@ -3,6 +3,11 @@
 # omarchy:summary=Returns true if all of the named packages are installed on the system (or false if any of them are missing).
 # omarchy:args=<packages...>
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" present "$@"
+fi
+
 for pkg in "$@"; do
   pacman -Q -- "$pkg" &>/dev/null || exit 1
 done

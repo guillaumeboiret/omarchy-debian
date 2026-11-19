@@ -2,5 +2,10 @@
 
 # omarchy:summary=Returns true if the AUR is up and available.
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" accessible "$@"
+fi
+
 curl -sf --connect-timeout 30 --retry 3 --retry-delay 3 -A "omarchy-update" \
   "https://aur.archlinux.org/rpc/?v=5&type=info&arg=base" >/dev/null

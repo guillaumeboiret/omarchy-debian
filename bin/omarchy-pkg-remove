@@ -3,6 +3,11 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
 # omarchy:requires-sudo=true
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" remove "$@"
+fi
+
 fzf_args=(
   --multi
   --preview 'yay -Qi {1}'

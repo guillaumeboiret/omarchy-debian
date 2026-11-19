@@ -5,6 +5,11 @@
 # omarchy:examples=omarchy pkg add jq ripgrep
 # omarchy:requires-sudo=true
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" add "$@"
+fi
+
 if omarchy-pkg-missing "$@"; then
   if (( EUID == 0 )); then
     pacman -S --noconfirm --needed -- "$@" || exit 1

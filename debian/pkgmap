@@ -1,0 +1,79 @@
+# Arch package name → where omarchy-debian-pkg gets it on Debian 13 / ARM64.
+#
+#   apt:<pkg> [<pkg>…]           Debian packages (sudo apt-get install)
+#   flatpak:<app-id>[=<cmd>]     Flathub app, user install; <cmd> gets a launcher in ~/.local/bin
+#   app:<name>                   built by omarchy-debian from Omarchy's own recipes
+#   nerdfont:<archive>           Nerd Font release archive → ~/.local/share/fonts
+#   none:<reason>                not available; the reason is shown to the user
+#
+# Names not listed: an Omarchy recipe of that name is built, else a Debian package of that
+# exact name is installed, else the install fails with a clear message.
+
+# Browsers
+google-chrome              flatpak:com.google.Chrome=google-chrome-stable
+brave-bin                  flatpak:com.brave.Browser=brave
+brave-origin-bin           flatpak:com.brave.Browser=brave
+zen-browser-bin            flatpak:app.zen_browser.zen=zen-browser
+microsoft-edge-stable-bin  none:Microsoft Edge has no Linux ARM64 build
+
+# Editors
+helix                      apt:hx
+visual-studio-code-bin     flatpak:com.visualstudio.code=code
+zed                        flatpak:dev.zed.Zed=zeditor
+
+# Terminals
+ghostty                    none:Ghostty isn't packaged for Debian 13 ARM64 (Alacritty, Kitty and Foot are)
+
+# Apps
+signal-desktop             flatpak:org.signal.Signal=signal-desktop
+typora                     flatpak:io.typora.Typora=typora
+1password                  none:1Password has no Debian ARM64 package; Bitwarden is on Flathub (com.bitwarden.desktop)
+1password-cli              none:1Password CLI has no Debian ARM64 package
+dropbox                    none:Dropbox has no Linux ARM64 client
+dropbox-cli                none:Dropbox has no Linux ARM64 client
+nautilus-dropbox           none:Dropbox has no Linux ARM64 client
+nordvpn-bin                none:NordVPN has no Debian ARM64 package here
+claude-desktop             none:Claude Desktop has no Linux build; use Claude Code (cx) in the terminal
+openai-codex-desktop       none:Codex Desktop has no Linux ARM64 build
+lmstudio-bin               none:LM Studio has no Linux ARM64 build
+tailscale                  none:Install Tailscale from its Debian repo: curl -fsSL https://tailscale.com/install.sh | sh
+ollama                     none:Install Ollama with its official script: curl -fsSL https://ollama.com/install.sh | sh
+ollama-cuda                none:No NVIDIA GPU on Apple Silicon
+ollama-rocm                none:No AMD GPU on Apple Silicon
+ollama-vulkan              none:Install Ollama with its official script: curl -fsSL https://ollama.com/install.sh | sh
+
+# Gaming (Apple Silicon has no x86 CPU; Steam, Lutris and Heroic need one)
+steam                      none:Steam needs an x86 CPU — not available on Apple Silicon under Debian
+lutris                     none:Lutris isn't packaged for Debian 13
+heroic-games-launcher-bin  none:Heroic has no Linux ARM64 build
+umu-launcher               none:umu needs an x86 CPU
+wine-staging               apt:wine
+wine-mono                  none:Debian's wine downloads Mono on first use
+wine-gecko                 none:Debian's wine downloads Gecko on first use
+moonlight-qt               flatpak:com.moonlight_stream.Moonlight=moonlight
+sunshine                   flatpak:dev.lizardbyte.app.Sunshine=sunshine
+minecraft-launcher         flatpak:org.prismlauncher.PrismLauncher=prismlauncher
+retroarch                  flatpak:org.libretro.RetroArch=retroarch
+xpadneo-dkms               none:xpadneo isn't packaged for Debian
+
+# Libraries / dev bits under Debian names
+php-sqlite                 apt:php-sqlite3
+xdebug                     apt:php-xdebug
+libyaml                    apt:libyaml-dev
+libfido2                   apt:libfido2-1
+pam-u2f                    apt:libpam-u2f
+libfprint                  apt:libfprint-2-2
+libfprint-git              apt:libfprint-2-2
+python-gpgme               apt:python3-gpg
+python-protobuf            apt:python3-protobuf
+libappindicator            apt:libayatana-appindicator3-1
+symfony-cli                none:Install the Symfony CLI from https://symfony.com/download
+
+# Fonts
+ttf-cascadia-mono-nerd     nerdfont:CascadiaMono
+ttf-meslo-nerd             nerdfont:Meslo
+ttf-firacode-nerd          nerdfont:FiraCode
+ttf-victor-mono-nerd       nerdfont:VictorMono
+ttf-bitstream-vera-mono-nerd nerdfont:BitstreamVeraSansMono
+ttf-iosevka-nerd           nerdfont:Iosevka
+ttf-jetbrains-mono-nerd    nerdfont:JetBrainsMono
