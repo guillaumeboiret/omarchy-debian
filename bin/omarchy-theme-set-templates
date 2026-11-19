@@ -425,7 +425,8 @@ render_templates() {
         output = ARGV[i + 1]
         # RT holds the terminator each line was read with, so a template that
         # ends without a newline renders without one, as sed left it.
-        while ((getline line < template) > 0) printf "%s%s", render(line), RT > output
+        # Debian port: RT is gawk-only; under mawk it is empty, so fall back to a newline.
+        while ((getline line < template) > 0) printf "%s%s", render(line), (RT != "" ? RT : "\n") > output
         close(template)
         close(output)
         # A template with no lines still leaves its output file behind.
