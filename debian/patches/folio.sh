@@ -11,3 +11,6 @@ for q in folio-*/src/FolderGrid.qml folio-*/src/FileListView.qml; do
   expect "$q" '^    acceptedButtons: Qt.NoButton'
   sed -i '/^    acceptedButtons: Qt.NoButton/d' "$q"
 done
+q=$(echo folio-*/src/FolderColumns.qml)
+expect "$q" 'clip: true'
+perl -0pi -e 's/(    Flickable \{\n        id: flick\n(?:.*\n){0,3}?)        acceptedButtons: Qt\.NoButton\n/$1/' "$q"

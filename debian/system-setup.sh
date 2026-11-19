@@ -30,11 +30,17 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
   qt6-shadertools-dev qt6-svg-dev qt6-tools-dev qt6-wayland-dev layer-shell-qt liblayershellqtinterface-dev \
   libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev libarchive-dev libpoppler-qt6-dev libqpdf-dev \
   libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
-  libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev
+  libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev \
+  qml6-module-qtquick-pdf
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then
   ln -sfn /home/guillaume/.local/lib/omarchy-screensaver /usr/lib/omarchy-screensaver
+fi
+
+# 8. folio as the "Open/Save file" picker: xdg-desktop-portal only reads /usr/share/…/portals
+if [ -f /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal ]; then
+  ln -sfn /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal /usr/share/xdg-desktop-portal/portals/folio.portal
 fi
 
 echo "System part done."

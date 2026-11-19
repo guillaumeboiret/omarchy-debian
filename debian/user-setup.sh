@@ -36,8 +36,7 @@ hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 }
 LUA
 grep -q 'require("hypr.debian")' "$HOME/.config/hypr/hyprland.lua" || echo 'require("hypr.debian")' >> "$HOME/.config/hypr/hyprland.lua"
 
-# 3. File chooser: folio isn't available → GTK
-sed -i 's/FileChooser=folio;gtk/FileChooser=gtk/' "$HOME/.config/xdg-desktop-portal/"*.conf
+# 3. File chooser: folio (built by omarchy-debian) with GTK as fallback — Omarchy's default
 
 # 4. uwsm session environment (OMARCHY_PATH + PATH)
 mkdir -p "$HOME/.config/uwsm"
