@@ -19,7 +19,7 @@ done
 # 2. Debian/Mac tweaks loaded after Omarchy's defaults
 cat > "$HOME/.config/hypr/debian.lua" <<'LUA'
 -- Debian port overrides (loaded last)
-hl.env("QT_QPA_PLATFORMTHEME", "gtk3")   -- Omarchy's qtengine isn't packaged for Debian
+hl.env("QT_PLUGIN_PATH", os.getenv("HOME") .. "/.local/lib/qt6/plugins")   -- Omarchy apps built into ~/.local (qtengine theme)
 hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 })
 LUA
 grep -q 'require("hypr.debian")' "$HOME/.config/hypr/hyprland.lua" || echo 'require("hypr.debian")' >> "$HOME/.config/hypr/hyprland.lua"
@@ -35,9 +35,13 @@ export PATH="/usr/share/omarchy/bin:$HOME/.local/bin:$OM/debian/bin:\$PATH"
 . /usr/share/omarchy/default/uwsm/env.d/10-omarchy
 UWSM
 
-# 5. Default apps (folio/omaview/omawrite → Debian apps)
-sed -e 's/folio\.desktop/org.gnome.Nautilus.desktop/g; s/omaview\.desktop/imv.desktop/g; s/omawrite\.desktop/nvim.desktop/g' \
-  "$OM/default/applications/mimeapps.list" > "$HOME/.config/mimeapps.list.omarchy"
+# 5. Default apps: Omarchy's own (folio/omaview/omawrite, built by `omarchy-debian apps install`);
+#    fall back to Debian apps for any that aren't built yet.
+subst=()
+command -v folio    >/dev/null || subst+=(-e 's/folio\.desktop/org.gnome.Nautilus.desktop/g')
+command -v omaview  >/dev/null || subst+=(-e 's/omaview\.desktop/imv.desktop/g')
+command -v omawrite >/dev/null || subst+=(-e 's/omawrite\.desktop/nvim.desktop/g')
+sed "${subst[@]:-}" "$OM/default/applications/mimeapps.list" > "$HOME/.config/mimeapps.list.omarchy"
 [ -e "$HOME/.config/mimeapps.list" ] && cp "$HOME/.config/mimeapps.list" "$BK/"
 cp "$HOME/.config/mimeapps.list.omarchy" "$HOME/.config/mimeapps.list"
 

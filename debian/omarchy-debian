@@ -21,11 +21,14 @@ DB="$HOME/.local/state/omarchy-debian/installed"
 PREFIX="$HOME/.local"
 CARCH=aarch64
 
+# Debian's rustc is too old for ttfx/gliff; prefer a user-local rustup toolchain.
+[[ -x $HOME/.cargo/bin/cargo ]] && export PATH="$HOME/.cargo/bin:$PATH"
+
 # Apps we build. Not here (and why): hype (needs Qt ≥ 6.9), omarchy-hyprland-titlebars (needs
-# Hyprland ≥ 0.56), gliff (rustc ≥ 1.87), superwhisper-bin (closed source, Arch build),
+# Hyprland ≥ 0.56), superwhisper-bin (closed source, Arch build),
 # omarchy-local-ai (large AI stack), omarchy-power-profiles-daemon (system daemon).
 APPS=(omasnap folio omaview omacut omawrite omacalc plain signed monologue fantasi
-      ttfx omarchy-screensaver owe qtengine tobi-try aether mise-bin cliamp herdr disktree-bin
+      ttfx gliff omarchy-screensaver owe qtengine tobi-try aether mise-bin cliamp herdr disktree-bin
       neovim omarchy-nvim omarchy-themes-intros)
 
 c_b=$'\e[1m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_0=$'\e[0m'
@@ -98,7 +101,13 @@ relocate() {  # move $pkgdir/usr → ~/.local, fixing absolute /usr paths
   [[ -d $pkgdir/usr ]] || { warn "$name installed nothing under /usr"; return; }
   # Rewrite absolute /usr/… paths inside desktop files, services and symlinks
   find "$pkgdir/usr" -type f \( -name '*.desktop' -o -name '*.service' -o -name '*.portal' \) -print0 |
-    xargs -0 -r sed -i -E "s#(Exec|TryExec|ExecStart)=/usr/#\1=$PREFIX/#g; s#=/usr/bin/#=$PREFIX/bin/#g"
+    xargs -0 -r sed -i -E "s#(^|[ =\"'])/usr/(bin|lib|libexec|share)/#\1$PREFIX/\2/#g"
+  # systemd only reads user units from ~/.local/share/systemd/user (not ~/.local/lib/…)
+  if [[ -d $pkgdir/usr/lib/systemd/user ]]; then
+    mkdir -p "$pkgdir/usr/share/systemd/user"
+    mv "$pkgdir/usr/lib/systemd/user/"* "$pkgdir/usr/share/systemd/user/"
+    rm -rf "$pkgdir/usr/lib/systemd/user"
+  fi
   find "$pkgdir/usr" -type l | while read -r l; do
     t=$(readlink "$l"); [[ $t == /usr/* ]] && ln -sfn "$PREFIX/${t#/usr/}" "$l"
   done
@@ -118,21 +127,11 @@ build_app() {
   pkgfile=$(recipe_file "$name")
   build="$WORK/$name"; rm -rf "$build"; mkdir -p "$build/src" "$build/pkg"
   say "Building $name $(recipe_version "$name")"
-  # NB: the subshell must not sit in a `|| …` context, or bash silently disables `set -e` inside it
+  # Callers use `build_app … || …`, which makes bash ignore `set -e` in everything below,
+  # subshells included. A fresh bash process starts clean, so a failed step really stops.
   local rc=0
   set +e
-  (
-    set -e +u
-    export PATH="$PREFIX/bin:$PATH" CARCH startdir="$dir" srcdir="$build/src" pkgdir="$build/pkg" MAKEFLAGS="-j$(nproc)"
-    cd "$srcdir"
-    # shellcheck disable=SC1090
-    source "$pkgfile"
-    fetch_sources "$dir"
-    cd "$srcdir"; declare -F prepare >/dev/null && prepare
-    cd "$srcdir"; declare -F build   >/dev/null && build
-    cd "$srcdir"
-    if declare -F "package_$name" >/dev/null; then "package_$name"; else package; fi
-  ) > "$build/log" 2>&1
+  bash "$0" __build-steps "$name" "$dir" "$pkgfile" "$build" > "$build/log" 2>&1
   rc=$?
   set -e
   if (( rc != 0 )); then warn "$name failed — see $build/log"; tail -15 "$build/log" >&2; return 1; fi
@@ -154,6 +153,10 @@ post_install() {
   update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
   gtk-update-icon-cache -q -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
   systemctl --user daemon-reload 2>/dev/null || true
+  # owe (Omarchy's wallpaper engine) runs as a user daemon; enable it once, then respect the user's choice
+  if [[ -f $PREFIX/share/systemd/user/owed.service && ! -e $DB/owed.enabled ]]; then
+    systemctl --user enable --now owed.service 2>/dev/null && touch "$DB/owed.enabled"
+  fi
   # Omarchy's Neovim setup: seed ~/.config/nvim once (never overwrite the user's edits)
   if [[ -d $PREFIX/share/omarchy-nvim/config && ! -e $HOME/.config/nvim ]]; then
     cp -a "$PREFIX/share/omarchy-nvim/config" "$HOME/.config/nvim"
@@ -216,9 +219,31 @@ update_omarchy() {
   fi
 }
 
+build_steps() {
+  local name=$1 dir=$2 pkgfile=$3 build=$4
+  set -e +u
+  export PATH="$PREFIX/bin:$PATH" CARCH startdir="$dir" srcdir="$build/src" pkgdir="$build/pkg" MAKEFLAGS="-j$(nproc)"
+  cd "$srcdir"
+  # shellcheck disable=SC1090
+  source "$pkgfile"
+  fetch_sources "$dir"
+  if [[ -f $DEB/patches/$name.sh ]]; then
+    echo "==> Applying Debian patch $name.sh"
+    cd "$srcdir"; source "$DEB/patches/_lib.sh"; source "$DEB/patches/$name.sh"
+  fi
+  cd "$srcdir"; if declare -F prepare >/dev/null; then prepare; fi
+  cd "$srcdir"; if declare -F build >/dev/null; then build; fi
+  cd "$srcdir"
+  if declare -F "package_$name" >/dev/null; then "package_$name"; else package; fi
+}
+
 case ${1:-help} in
+  __build-steps) shift; build_steps "$@" ;;
   update)
     update_omarchy
+    if command -v rustup >/dev/null; then
+      say "Updating Rust toolchain"; rustup update stable >/dev/null 2>&1 || warn "rustup update failed"
+    fi
     apps_cmd update
     say "Updating Flatpaks";  flatpak update --user -y --noninteractive >/dev/null 2>&1 || warn "flatpak update failed"
     if command -v nvim >/dev/null && [[ -d $HOME/.config/nvim ]]; then
