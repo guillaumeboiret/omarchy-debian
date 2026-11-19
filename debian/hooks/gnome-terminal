@@ -1,0 +1,30 @@
+#!/bin/bash
+# Debian port: theme GNOME Terminal like the rest of Omarchy (it has no Omarchy template).
+# Installed into ~/.config/omarchy/hooks/{theme-set,font-set}.d/; reads the kitty colors Omarchy renders.
+command -v gnome-terminal >/dev/null || exit 0
+kitty="$HOME/.local/state/omarchy/current/theme/kitty.conf"
+profile=$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d "'")
+schema="org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$profile/"
+get() { awk -v k="$1" '$1 == k { print $2; exit }' "$kitty"; }
+
+if [[ -f $kitty ]]; then
+  palette="["
+  for i in $(seq 0 15); do palette+="'$(get color$i)'"; (( i < 15 )) && palette+=", "; done
+  palette+="]"
+  gsettings set "$schema" use-theme-colors false
+  gsettings set "$schema" palette "$palette"
+  gsettings set "$schema" background-color "$(get background)"
+  gsettings set "$schema" foreground-color "$(get foreground)"
+  gsettings set "$schema" cursor-colors-set true
+  gsettings set "$schema" cursor-background-color "$(get cursor)"
+  gsettings set "$schema" cursor-foreground-color "$(get background)"
+  gsettings set "$schema" highlight-colors-set true
+  gsettings set "$schema" highlight-background-color "$(get selection_background)"
+  gsettings set "$schema" highlight-foreground-color "$(get selection_foreground)"
+  gsettings set "$schema" bold-is-bright false
+fi
+
+# Same monospace font as the rest of Omarchy, keeping the current size
+size=$(gsettings get "$schema" font | tr -d "'" | awk '{print $NF}'); [[ $size =~ ^[0-9.]+$ ]] || size=11
+gsettings set "$schema" use-system-font false
+gsettings set "$schema" font "$(omarchy-font-current) $size"

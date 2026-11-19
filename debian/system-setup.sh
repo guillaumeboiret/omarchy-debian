@@ -31,7 +31,7 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
   libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev libarchive-dev libpoppler-qt6-dev libqpdf-dev \
   libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
   libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev \
-  qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi
+  qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi gawk
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then
@@ -42,5 +42,19 @@ fi
 if [ -f /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal ]; then
   ln -sfn /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal /usr/share/xdg-desktop-portal/portals/folio.portal
 fi
+
+# 9. Omarchy's scripts are written for GNU awk (Arch's awk); Debian defaults to mawk
+update-alternatives --set awk /usr/bin/gawk
+# …and for Lua 5.4 (Arch's lua; Debian's default `lua` is 5.1, which lacks -E)
+update-alternatives --set lua-interpreter /usr/bin/lua5.4
+
+# 10. Browser theme colour (Omarchy's narrow passwordless rule). A root-owned COPY, never a link
+#     into the user-writable tree; the script pins PATH and accepts only a 6-hex-digit colour.
+install -o root -g root -m 755 "$OM/bin/omarchy-theme-set-browser-policy" /usr/bin/omarchy-theme-set-browser-policy
+sed 's/^%wheel /%sudo /' "$OM/etc/sudoers.d/omarchy-theme-browser" > /tmp/omarchy-theme-browser.sudoers
+if visudo -cf /tmp/omarchy-theme-browser.sudoers >/dev/null; then
+  install -o root -g root -m 440 /tmp/omarchy-theme-browser.sudoers /etc/sudoers.d/omarchy-theme-browser
+fi
+rm -f /tmp/omarchy-theme-browser.sudoers
 
 echo "System part done."
