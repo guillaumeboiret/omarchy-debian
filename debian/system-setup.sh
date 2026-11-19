@@ -98,4 +98,10 @@ install -d /etc/systemd/logind.conf.d
 printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/10-ignore-power-button.conf
 systemctl kill -s HUP systemd-logind   # reload config without ending sessions
 
+# 18. Firefox: Omarchy's policy (no "make default" nag, VA-API, fractional scaling, swipe nav).
+#     Needed here: http/https go through omarchy-browser.desktop (~/.config/hyprland-mimeapps.list),
+#     so Firefox never sees itself as the default and would ask on every launch.
+install -d -m 755 /usr/lib/firefox/distribution
+install -o root -g root -m 644 "$OM/default/firefox/policies.json" /usr/lib/firefox/distribution/policies.json
+
 echo "System part done."
