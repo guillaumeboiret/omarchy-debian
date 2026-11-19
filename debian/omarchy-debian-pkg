@@ -1,0 +1,140 @@
+#!/bin/bash
+# Debian backend for Omarchy's package helpers (omarchy-pkg-*), which call pacman/yay on Arch.
+# Each Arch package name resolves through debian/pkgmap to apt, Flatpak, an Omarchy app built by
+# omarchy-debian, a Nerd Font download, or "not available" with a reason.
+#
+#   omarchy-debian-pkg add|aur-add <pkg>…   install (skips what is already there)
+#   omarchy-debian-pkg present <pkg>…       exit 0 if all installed
+#   omarchy-debian-pkg missing <pkg>…       exit 0 if any is missing
+#   omarchy-debian-pkg drop <pkg>…          remove the installed ones
+#   omarchy-debian-pkg install|aur-install  fuzzy picker: Debian packages / Omarchy apps
+#   omarchy-debian-pkg remove               fuzzy picker over installed packages
+
+DEB="${OMARCHY_PATH:-/usr/share/omarchy}/debian"
+MAP="$DEB/pkgmap"
+STATE="$HOME/.local/state/omarchy-debian/installed"
+PKGS="$HOME/.local/src/omarchy-pkgs/pkgbuilds"
+
+# resolve NAME → prints "kind target" (kind: apt|flatpak|app|nerdfont|none)
+resolve() {
+  local name=$1 line
+  line=$(awk -v n="$name" '$1 == n { $1 = ""; sub(/^ +/, ""); print; exit }' "$MAP" 2>/dev/null)
+  if [[ -n $line ]]; then
+    echo "${line%%:*} ${line#*:}"
+  elif [[ -d $PKGS/$name || -f $DEB/recipes/$name.PKGBUILD ]]; then
+    echo "app $name"
+  elif apt-cache show "$name" >/dev/null 2>&1; then
+    echo "apt $name"
+  else
+    echo "none $name isn't available for Debian 13 ARM64"
+  fi
+}
+
+flatpak_installed() { flatpak info "${1%%=*}" >/dev/null 2>&1; }
+apt_installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed"; }
+font_dir() { echo "$HOME/.local/share/fonts/NerdFonts/$1"; }
+
+is_present() {
+  local kind target t
+  read -r kind target <<< "$(resolve "$1")"
+  case $kind in
+    apt) for t in $target; do apt_installed "$t" || return 1; done ;;
+    flatpak) flatpak_installed "$target" ;;
+    app) [[ -f $STATE/$target.version ]] ;;
+    nerdfont) [[ -d $(font_dir "$target") ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+# A command-line launcher for a Flatpak app, so Omarchy can call it by its usual name.
+flatpak_launcher() {
+  local id=${1%%=*} cmd=${1#*=}
+  [[ $1 == *=* ]] || return 0
+  mkdir -p "$HOME/.local/bin"
+  printf '#!/bin/bash\n# Omarchy Debian port: launcher for Flatpak %s\nexec flatpak run %s "$@"\n' "$id" "$id" > "$HOME/.local/bin/$cmd"
+  chmod +x "$HOME/.local/bin/$cmd"
+}
+
+install_nerdfont() {
+  local name=$1 dir tmp
+  dir=$(font_dir "$name"); tmp=$(mktemp -d)
+  echo "Downloading $name Nerd Font…"
+  if curl -fsSL -o "$tmp/f.tar.xz" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$name.tar.xz"; then
+    mkdir -p "$dir" && tar -xJf "$tmp/f.tar.xz" -C "$dir" && fc-cache -f "$dir" >/dev/null
+    rm -rf "$tmp"
+  else
+    rm -rf "$tmp"; return 1
+  fi
+}
+
+cmd_add() {
+  local name kind target apt=() flat=() apps=() fonts=() failed=() t
+  for name in "$@"; do
+    is_present "$name" && continue
+    read -r kind target <<< "$(resolve "$name")"
+    case $kind in
+      apt) for t in $target; do apt+=("$t"); done ;;
+      flatpak) flat+=("$target") ;;
+      app) apps+=("$target") ;;
+      nerdfont) fonts+=("$target") ;;
+      *) echo -e "\033[31m$name: ${target}\033[0m" >&2; failed+=("$name") ;;
+    esac
+  done
+  if (( ${#apt[@]} )); then
+    if (( EUID == 0 )); then apt-get install -y "${apt[@]}"; else sudo apt-get install -y "${apt[@]}"; fi || failed+=("${apt[@]}")
+  fi
+  for t in "${flat[@]}"; do
+    flatpak install --user -y --noninteractive flathub "${t%%=*}" && flatpak_launcher "$t" || failed+=("${t%%=*}")
+  done
+  if (( ${#apps[@]} )); then
+    "$DEB/omarchy-debian" apps install "${apps[@]}" || failed+=("${apps[@]}")
+  fi
+  for t in "${fonts[@]}"; do install_nerdfont "$t" || failed+=("$t"); done
+  if (( ${#failed[@]} )); then
+    echo -e "\033[31mError: not installed: ${failed[*]}\033[0m" >&2
+    return 1
+  fi
+}
+
+cmd_drop() {
+  local name kind target apt=() t
+  for name in "$@"; do
+    is_present "$name" || continue
+    read -r kind target <<< "$(resolve "$name")"
+    case $kind in
+      apt) for t in $target; do apt+=("$t"); done ;;
+      flatpak)
+        flatpak uninstall --user -y --noninteractive "${target%%=*}"
+        [[ $target == *=* ]] && rm -f "$HOME/.local/bin/${target#*=}" ;;
+      app) "$DEB/omarchy-debian" apps remove "$target" ;;
+      nerdfont) rm -rf "$(font_dir "$target")"; fc-cache -f >/dev/null ;;
+    esac
+  done
+  if (( ${#apt[@]} )); then
+    if (( EUID == 0 )); then apt-get remove -y "${apt[@]}"; else sudo apt-get remove -y "${apt[@]}"; fi
+  fi
+}
+
+fzf_pick() {
+  fzf --multi --preview "$1" --preview-window 'down:65%:wrap' \
+    --preview-label='tab: multi-select' --preview-label-pos=bottom --color "pointer:$2,marker:$2"
+}
+
+case ${1:-} in
+  add|aur-add) shift; cmd_add "$@" ;;
+  present) shift; for p in "$@"; do is_present "$p" || exit 1; done ;;
+  missing) shift; for p in "$@"; do is_present "$p" || exit 0; done; exit 1 ;;
+  drop) shift; cmd_drop "$@" ;;
+  install)
+    picks=$(apt-cache pkgnames | sort | fzf_pick 'apt-cache show {1} | head -40' green)
+    [[ -n $picks ]] && { sudo apt-get install -y $picks; omarchy-show-done $?; } ;;
+  aur-install)
+    # Omarchy's own app recipes stand in for the AUR
+    picks=$(command ls "$PKGS" | fzf_pick "sed -n '1,25p' $PKGS/{1}/PKGBUILD" green)
+    [[ -n $picks ]] && { "$DEB/omarchy-debian" apps install $picks; omarchy-show-done $?; } ;;
+  remove)
+    picks=$(apt-mark showmanual | sort | fzf_pick 'apt-cache show {1} | head -40' red)
+    [[ -n $picks ]] && { sudo apt-get remove -y $picks; omarchy-show-done $?; } ;;
+  accessible) exit 0 ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

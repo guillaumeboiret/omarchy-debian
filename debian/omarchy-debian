@@ -178,11 +178,13 @@ apps_cmd() {
       local failed=()
       for a in "${list[@]}"; do build_app "$a" || failed+=("$a"); done
       post_install
-      (( ${#failed[@]} )) && warn "failed: ${failed[*]}" || true ;;
+      if (( ${#failed[@]} )); then warn "failed: ${failed[*]}"; return 1; fi ;;
     update)
       sync_recipes
-      local failed=() n=0
-      for a in "${APPS[@]}"; do
+      local failed=() n=0 f
+      # everything installed — the default set plus apps added from the Omarchy menu
+      for f in "$DB"/*.version; do
+        [[ -e $f ]] || continue; a=$(basename "$f" .version)
         [[ $(installed_version "$a") == - ]] && continue
         [[ $(installed_version "$a") == "$(recipe_version "$a")" ]] && continue
         n=$((n+1)); build_app "$a" || failed+=("$a")

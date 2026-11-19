@@ -3,6 +3,11 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
 # omarchy:requires-sudo=true
 
+# Debian port: no pacman/yay here; the Debian backend maps Arch names to apt/Flatpak/Omarchy apps.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" install "$@"
+fi
+
 fzf_args=(
   --multi
   --preview 'pacman -Sii {1}'
