@@ -126,6 +126,19 @@ if (( shell_ready == 0 )); then
   exit 1
 fi
 
+# Debian port: Quickshell 0.3.0 can segfault while tearing down the old shell,
+# and its crash handler then relaunches it next to the fresh one. Keep only the
+# newest instance so notifications and polkit belong to a single shell.
+sleep 2
+mapfile -t shell_pids < <(quickshell list -a -j 2>/dev/null |
+  jq -r --arg p "$CONFIG_DIR/shell.qml" '.[] | select(.config_path == $p) | .pid' 2>/dev/null)
+if (( ${#shell_pids[@]} > 1 )); then
+  for pid in "${shell_pids[@]}"; do
+    # Fresh launches carry -n; a crash-handler relaunch shows a bare argv.
+    [[ $(ps -o args= -p "$pid") == *" -n "* ]] || kill $(pgrep -P "$pid") "$pid" 2>/dev/null
+  done
+fi
+
 # The session stays compositor-locked after the old lock client died, so
 # re-acquire the lock and let the user authenticate out of it. This comes
 # first and depends on nothing else: a user stranded behind the failsafe must
