@@ -100,3 +100,7 @@ done
 mkdir -p "$HOME/.local/share/fonts/omarchy"
 ln -sfn "$OM/default/fonts/omarchy/omarchy.ttf" "$HOME/.local/share/fonts/omarchy/omarchy.ttf"
 fc-cache -f "$HOME/.local/share/fonts" >/dev/null
+# 12. Colour emoji before DejaVu's monochrome ones in font fallback (Arch's noto-fonts-emoji does this)
+mkdir -p "$HOME/.config/fontconfig/conf.d"
+cp "$OM/debian/60-omarchy-emoji.conf" "$HOME/.config/fontconfig/conf.d/"
+fc-cache -f >/dev/null
