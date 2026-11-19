@@ -104,3 +104,5 @@ fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 mkdir -p "$HOME/.config/fontconfig/conf.d"
 cp "$OM/debian/60-omarchy-emoji.conf" "$HOME/.config/fontconfig/conf.d/"
 fc-cache -f >/dev/null
+# 13. Launchers for Omarchy's lazy mise tools (codex, opencode, amp, ghui…) — they install on first run
+command -v mise >/dev/null && mise reshim

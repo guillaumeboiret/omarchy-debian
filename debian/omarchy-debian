@@ -264,6 +264,7 @@ case ${1:-help} in
       say "Updating Rust toolchain"; rustup update stable >/dev/null 2>&1 || warn "rustup update failed"
     fi
     apps_cmd update
+    command -v mise >/dev/null && { mise reshim >/dev/null 2>&1 || warn "mise reshim failed"; }
     say "Updating Flatpaks";  flatpak update --user -y --noninteractive >/dev/null 2>&1 || warn "flatpak update failed"
     if command -v nvim >/dev/null && [[ -d $HOME/.config/nvim ]]; then
       say "Updating Neovim plugins"; nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 || warn "Neovim plugin update failed"
