@@ -35,7 +35,7 @@ local function log(kind, msg, trace)
     if not f then return end
   end
   f:write(os.date("%Y-%m-%d %H:%M:%S"), " [", kind, "] ", msg, "\n")
-  if trace then f:write(trace:gsub("\n", "\n    "), "\n") end
+  if trace then f:write("    ", (trace:gsub("\n", "\n    ")), "\n") end
   f:close()
 end
 
@@ -63,6 +63,20 @@ dofile = function(file)
 end
 
 -- Runtime errors in callbacks: wrap every function handed to an hl.* function.
+-- hl.* errors raised through the wrapper would point at this file, so they are
+-- re-raised with the caller's file:line (what Hyprland showed before).
+local here = debug.getinfo(1, "S").short_src:gsub("%p", "%%%0")
+local function relocate(err)
+  if type(err) ~= "string" then return err end
+  err = err:gsub("^" .. here .. ":%d+: ", "", 1)
+  if err:find("^[^\n]-:%-?%d+: ") then return err end -- already has a location
+  local info = debug.getinfo(3, "Sl")
+  if info and info.currentline and info.currentline > 0 then
+    return info.short_src .. ":" .. info.currentline .. ": " .. err
+  end
+  return err
+end
+
 local function wrap_callbacks(owner, fname, fn)
   return function(...)
     local args = table.pack(...)
@@ -72,7 +86,9 @@ local function wrap_callbacks(owner, fname, fn)
         args[i] = function(...) return protect("callback " .. owner .. fname, cb, ...) end
       end
     end
-    return fn(table.unpack(args, 1, args.n))
+    local results = table.pack(pcall(fn, table.unpack(args, 1, args.n)))
+    if not results[1] then error(relocate(results[2]), 0) end
+    return table.unpack(results, 2, results.n)
   end
 end
 
