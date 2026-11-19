@@ -30,6 +30,7 @@ end
 
 -- Load generated state from ~/.local/state, user modules from ~/.config, and
 -- Omarchy defaults from $OMARCHY_PATH.
+dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/errorlog.lua")
 dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/compat-055.lua")
 
 package.path = home
