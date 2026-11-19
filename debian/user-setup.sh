@@ -19,7 +19,17 @@ done
 # 2. Debian/Mac tweaks loaded after Omarchy's defaults
 cat > "$HOME/.config/hypr/debian.lua" <<'LUA'
 -- Debian port overrides (loaded last)
-hl.env("QT_PLUGIN_PATH", os.getenv("HOME") .. "/.local/lib/qt6/plugins")   -- Omarchy apps built into ~/.local (qtengine theme)
+-- Omarchy's apps are built into ~/.local (omarchy-debian); put them on the session PATH.
+-- uwsm-app launches through systemd, so its environment must get the same PATH.
+local home = os.getenv("HOME")
+local path = "/usr/share/omarchy/bin:" .. home .. "/.local/bin:" .. home .. "/.cargo/bin:"
+  .. home .. "/.local/share/omarchy/debian/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+local qtplugins = home .. "/.local/lib/qt6/plugins"
+hl.env("PATH", path)
+hl.env("QT_PLUGIN_PATH", qtplugins)   -- qtengine theme
+hl.on("hyprland.start", function()
+  hl.exec_cmd("systemctl --user set-environment PATH='" .. path .. "' QT_PLUGIN_PATH='" .. qtplugins .. "'")
+end)
 hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 })
 LUA
 grep -q 'require("hypr.debian")' "$HOME/.config/hypr/hyprland.lua" || echo 'require("hypr.debian")' >> "$HOME/.config/hypr/hyprland.lua"
