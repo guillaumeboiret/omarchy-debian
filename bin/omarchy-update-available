@@ -6,7 +6,8 @@ set -euo pipefail
 
 updates=()
 
-if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+# Debian port: Omarchy is a git checkout (branch debian-port tracking upstream) behind the /usr/share link
+if [[ $OMARCHY_PATH != "/usr/share/omarchy" || -f /etc/debian_version ]]; then
   upstream=$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
   if [[ -n $upstream ]]; then
     GIT_TERMINAL_PROMPT=0 timeout 10 git -C "$OMARCHY_PATH" fetch --quiet 2>/dev/null || true
@@ -21,7 +22,9 @@ if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
 fi
 
 package=""
-if pacman -Qq omarchy-dev >/dev/null 2>&1; then
+if ! command -v pacman >/dev/null; then
+  :
+elif pacman -Qq omarchy-dev >/dev/null 2>&1; then
   package=omarchy-dev
 elif pacman -Qq omarchy >/dev/null 2>&1; then
   package=omarchy

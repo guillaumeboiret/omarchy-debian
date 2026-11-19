@@ -142,7 +142,12 @@ build_app() {
   # subshells included. A fresh bash process starts clean, so a failed step really stops.
   local rc=0
   set +e
-  bash "$0" __build-steps "$name" "$dir" "$pkgfile" "$build" > "$build/log" 2>&1
+  # Recipes that need Go (not in Debian's base set) get a current toolchain from mise for the build only.
+  local runner=()
+  if grep -qE "^makedepends=.*['\"( ]go['\") ]" "$pkgfile" && ! command -v go >/dev/null && command -v mise >/dev/null; then
+    runner=(mise exec go@latest --)
+  fi
+  "${runner[@]}" bash "$0" __build-steps "$name" "$dir" "$pkgfile" "$build" > "$build/log" 2>&1
   rc=$?
   set -e
   if (( rc != 0 )); then warn "$name failed — see $build/log"; tail -15 "$build/log" >&2; return 1; fi

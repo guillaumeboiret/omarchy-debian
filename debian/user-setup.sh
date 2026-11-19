@@ -23,7 +23,7 @@ cat > "$HOME/.config/hypr/debian.lua" <<'LUA'
 -- uwsm-app launches through systemd, so its environment must get the same PATH.
 local home = os.getenv("HOME")
 local path = "/usr/share/omarchy/bin:" .. home .. "/.local/bin:" .. home .. "/.cargo/bin:"
-  .. home .. "/.local/share/omarchy/debian/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+  .. home .. "/.local/share/omarchy/debian/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 local qtplugins = home .. "/.local/lib/qt6/plugins"
 hl.env("PATH", path)
 hl.env("QT_PLUGIN_PATH", qtplugins)   -- qtengine theme
@@ -85,6 +85,8 @@ for _d in "$HOME/.local/share/omarchy/debian/bin" "$HOME/.cargo/bin" "$HOME/.loc
   [ -d "$_d" ] && PATH="$_d:$PATH"
 done
 unset _d
+# Arch merges sbin into bin; Omarchy calls iw, rfkill… by bare name
+case ":$PATH:" in *":/usr/sbin:"*) ;; *) PATH="$PATH:/usr/sbin:/sbin" ;; esac
 export PATH
 [ -r "$OMARCHY_PATH/default/bash/env-bootstrap" ] && . "$OMARCHY_PATH/default/bash/env-bootstrap"
 PROFILE
