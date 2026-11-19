@@ -72,3 +72,19 @@ bash "$OM/install/user/first-run/gnome-theme.sh" || true
 bash "$OM/install/user/first-run/gtk-primary-paste.sh" || true
 
 echo "User part done. Backups in: $BK"
+
+# 9. Login shells (bash -lc — how Omarchy's menu and bar run every action) get Omarchy's paths.
+#    On Arch /etc/profile.d/omarchy.sh does this; Debian's /etc/profile resets PATH.
+grep -q "Omarchy (Debian port): Omarchy" "$HOME/.profile" 2>/dev/null || cat >> "$HOME/.profile" <<'PROFILE'
+
+# Omarchy (Debian port): Omarchy's menu, bar and scripts run commands through login
+# shells (bash -lc). On Arch /etc/profile.d/omarchy.sh supplies these paths; here we do.
+export OMARCHY_PATH=/usr/share/omarchy
+for _d in "$HOME/.local/share/omarchy/debian/bin" "$HOME/.cargo/bin" "$HOME/.local/bin" "$OMARCHY_PATH/bin"; do
+  PATH=$(printf '%s' ":$PATH:" | sed "s#:$_d:#:#g; s#^:##; s#:\$##")   # drop, then put in front
+  [ -d "$_d" ] && PATH="$_d:$PATH"
+done
+unset _d
+export PATH
+[ -r "$OMARCHY_PATH/default/bash/env-bootstrap" ] && . "$OMARCHY_PATH/default/bash/env-bootstrap"
+PROFILE
