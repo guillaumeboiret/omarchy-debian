@@ -92,4 +92,10 @@ rm -f /tmp/omarchy-tzupdate.sudoers
 install -d /usr/lib/omarchy
 [ -x /home/guillaume/.local/lib/omarchy/speedtest ] && ln -sfn /home/guillaume/.local/lib/omarchy/speedtest /usr/lib/omarchy/speedtest
 
+# 17. Power button: short press = Omarchy power menu (Hyprland XF86PowerOff bind), long press (≥5 s) = power off.
+#     Omarchy's drop-in only ignores the key; on Debian we also keep a long-press shutdown.
+install -d /etc/systemd/logind.conf.d
+printf '[Login]\nHandlePowerKey=ignore\nHandlePowerKeyLongPress=poweroff\n' > /etc/systemd/logind.conf.d/10-ignore-power-button.conf
+systemctl kill -s HUP systemd-logind   # reload config without ending sessions
+
 echo "System part done."
