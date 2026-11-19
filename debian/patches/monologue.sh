@@ -7,3 +7,6 @@ sed -i 's|#include <turbojpeg.h>|#include "tj3compat.h"|' "$f"
 q=$(echo monologue-*/src/Main.qml)
 expect "$q" 'mirrored: backend.mirror }'
 sed -i 's/mirrored: backend.mirror }/transform: Scale { origin.x: width \/ 2; xScale: backend.mirror ? -1 : 1 } }/' "$q"
+# Qt 6.8: VideoOutput has no endOfStreamPolicy (6.9+); a finished clip shows black instead of its last frame.
+expect "$q" 'endOfStreamPolicy: VideoOutput.KeepLastFrame; '
+sed -i 's/endOfStreamPolicy: VideoOutput.KeepLastFrame; //' "$q"
