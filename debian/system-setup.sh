@@ -57,4 +57,39 @@ if visudo -cf /tmp/omarchy-theme-browser.sudoers >/dev/null; then
 fi
 rm -f /tmp/omarchy-theme-browser.sudoers
 
+# 11. Feature dependencies found by the manual audit
+apt-get install -y rfkill v4l-utils libxkbcommon-tools systemd-coredump npm python3-nautilus fido2-tools \
+  fcitx5 fcitx5-frontend-gtk3 fcitx5-frontend-gtk4 fcitx5-frontend-qt6 fcitx5-config-qt
+# wl-copy --sensitive (emoji picker, QR capture, "copy code") needs wl-clipboard ≥ 2.3 (backports)
+apt-get install -y -t trixie-backports wl-clipboard
+
+# 12. Lazy-installed agent CLIs and tools (codex, opencode, amp, ghui…) are declared in mise's system config
+install -d /etc/mise/conf.d
+install -m 644 "$OM"/etc/mise/conf.d/*.toml /etc/mise/conf.d/
+
+# 13. Chromium: theme colour policy dir, and make Debian's chromium read ~/.config/chromium-flags.conf
+#     (Omarchy's extensions — Copy URL, Download Video — are loaded through those flags)
+install -d /etc/chromium/policies/managed
+cat > /etc/chromium.d/omarchy-flags <<'FLAGS'
+# Omarchy (Debian port): apply the user's ~/.config/chromium-flags.conf like Arch's chromium does
+if [ -r "$HOME/.config/chromium-flags.conf" ]; then
+  CHROMIUM_FLAGS="$CHROMIUM_FLAGS $(grep -v '^[[:space:]]*#' "$HOME/.config/chromium-flags.conf" | tr '\n' ' ')"
+fi
+FLAGS
+
+# 14. Branded About screen (fastfetch)
+install -d /etc/fastfetch
+cp -r "$OM"/etc/fastfetch/. /etc/fastfetch/
+
+# 15. Timezone changes from the menu / world clock: Omarchy's narrow rule (timedatectl set-timezone only)
+sed 's/^%wheel /%sudo /' "$OM/etc/sudoers.d/omarchy-tzupdate" > /tmp/omarchy-tzupdate.sudoers
+if visudo -cf /tmp/omarchy-tzupdate.sudoers >/dev/null; then
+  install -o root -g root -m 440 /tmp/omarchy-tzupdate.sudoers /etc/sudoers.d/omarchy-tzupdate
+fi
+rm -f /tmp/omarchy-tzupdate.sudoers
+
+# 16. Network speed test binary at the path Omarchy expects (built by omarchy-debian)
+install -d /usr/lib/omarchy
+[ -x /home/guillaume/.local/lib/omarchy/speedtest ] && ln -sfn /home/guillaume/.local/lib/omarchy/speedtest /usr/lib/omarchy/speedtest
+
 echo "System part done."
