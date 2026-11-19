@@ -11,7 +11,14 @@ if [[ ${1:-} == "--install" ]]; then
 fi
 
 if (($# == 0)); then
-  desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+  # Debian port: Debian 13 ships xdg-terminal-exec 0.12.3, which has no
+  # --print-id and opens a terminal instead (the menu's "checked" guards run
+  # this on every open). Read the preference list directly there.
+  if grep -q -- '--print-id' "$(command -v xdg-terminal-exec)" 2>/dev/null; then
+    desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+  else
+    desktop_id=$(grep -hvE '^[[:space:]]*(#|$)' "${XDG_CONFIG_HOME:-$HOME/.config}"/{hyprland-,}xdg-terminals.list 2>/dev/null | head -n1)
+  fi
   desktop_id=${desktop_id%%:*}
   case "$desktop_id" in
   Alacritty.desktop) echo "alacritty" ;;
