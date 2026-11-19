@@ -88,3 +88,13 @@ unset _d
 export PATH
 [ -r "$OMARCHY_PATH/default/bash/env-bootstrap" ] && . "$OMARCHY_PATH/default/bash/env-bootstrap"
 PROFILE
+
+# 10. GNOME Terminal follows Omarchy themes and fonts (it has no Omarchy template of its own)
+for d in theme-set.d font-set.d; do
+  mkdir -p "$HOME/.config/omarchy/hooks/$d"
+  ln -sfn "$OM/debian/hooks/gnome-terminal" "$HOME/.config/omarchy/hooks/$d/gnome-terminal"
+done
+# 11. Omarchy's logo glyph font (installed system-wide by the Omarchy package on Arch)
+mkdir -p "$HOME/.local/share/fonts/omarchy"
+ln -sfn "$OM/default/fonts/omarchy/omarchy.ttf" "$HOME/.local/share/fonts/omarchy/omarchy.ttf"
+fc-cache -f "$HOME/.local/share/fonts" >/dev/null
