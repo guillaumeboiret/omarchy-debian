@@ -31,7 +31,7 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
   libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev libarchive-dev libpoppler-qt6-dev libqpdf-dev \
   libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
   libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev \
-  qml6-module-qtquick-pdf
+  qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then
