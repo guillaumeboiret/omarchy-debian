@@ -20,6 +20,7 @@ microsoft-edge-stable-bin  none:Microsoft Edge has no Linux ARM64 build
 helix                      apt:hx
 visual-studio-code-bin     flatpak:com.visualstudio.code=code
 zed                        flatpak:dev.zed.Zed=zeditor
+emacs-wayland              apt:emacs-pgtk
 
 # Terminals
 ghostty                    none:Ghostty isn't packaged for Debian 13 ARM64 (Alacritty, Kitty and Foot are)
