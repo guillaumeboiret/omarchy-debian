@@ -22,8 +22,12 @@ cat > "$HOME/.config/hypr/debian.lua" <<'LUA'
 -- Omarchy's apps are built into ~/.local (omarchy-debian); put them on the session PATH.
 -- uwsm-app launches through systemd, so its environment must get the same PATH.
 local home = os.getenv("HOME")
-local path = "/usr/share/omarchy/bin:" .. home .. "/.local/bin:" .. home .. "/.cargo/bin:"
-  .. home .. "/.local/share/omarchy/debian/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+-- mise's command-wrappers must come first (agent CLIs: claude/codex/grok dispatch per account),
+-- and mise's shims last, matching Omarchy's default/bash/env-bootstrap.
+local mise = home .. "/.local/share/mise"
+local path = mise .. "/command-wrappers/bin:/usr/share/omarchy/bin:" .. home .. "/.local/bin:" .. home .. "/.cargo/bin:"
+  .. home .. "/.local/share/omarchy/debian/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:"
+  .. mise .. "/shims"
 local qtplugins = home .. "/.local/lib/qt6/plugins"
 hl.env("PATH", path)
 hl.env("QT_PLUGIN_PATH", qtplugins)   -- qtengine theme
