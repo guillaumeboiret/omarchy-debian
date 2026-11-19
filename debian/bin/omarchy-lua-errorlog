@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Debian port: show the Hyprland Lua error log written by default/hypr/errorlog.lua.
+#   omarchy-lua-errorlog            show the log
+#   omarchy-lua-errorlog -f         follow it
+#   omarchy-lua-errorlog --clear    empty it
+#   omarchy-lua-errorlog --snapshot record current `hyprctl configerrors` (called from Hyprland)
+
+log="$HOME/.local/state/omarchy/lua-errors.log"
+last="$HOME/.local/state/omarchy/configerrors.last"
+mkdir -p "${log%/*}"
+
+case $1 in
+  --snapshot)
+    current=$(hyprctl configerrors 2>&1 | sed '/^[[:space:]]*$/d')
+    previous=$(cat "$last" 2>/dev/null)
+    if [[ $current != "$previous" ]]; then
+      printf '%s\n' "$current" >"$last"
+      if [[ -n $current ]]; then
+        printf '%s [configerrors]\n%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(sed 's/^/    /' <<<"$current")" >>"$log"
+      else
+        printf '%s [configerrors] cleared\n' "$(date '+%Y-%m-%d %H:%M:%S')" >>"$log"
+      fi
+    fi
+    ;;
+  -f | --follow)
+    touch "$log"
+    tail -n 50 -f "$log"
+    ;;
+  --clear)
+    : >"$log"
+    ;;
+  *)
+    if [[ -s $log ]]; then
+      cat "$log"
+    else
+      echo "No Lua errors logged ($log)"
+    fi
+    ;;
+esac
