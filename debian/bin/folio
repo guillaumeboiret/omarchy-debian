@@ -1,3 +1,0 @@
-#!/bin/bash
-# Debian port: Omarchy's folio file manager → Nautilus
-exec nautilus --new-window "$@"

@@ -1,6 +1,0 @@
-#!/bin/bash
-# Debian port: Omarchy's omaview → imv for images, mpv for audio/video
-case "$(file -b --mime-type "${1:-}" 2>/dev/null)" in
-  video/*|audio/*) exec mpv --player-operation-mode=pseudo-gui "$@" ;;
-  *) exec imv "$@" ;;
-esac
