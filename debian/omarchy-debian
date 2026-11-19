@@ -102,6 +102,17 @@ relocate() {  # move $pkgdir/usr → ~/.local, fixing absolute /usr paths
   # Rewrite absolute /usr/… paths inside desktop files, services and symlinks
   find "$pkgdir/usr" -type f \( -name '*.desktop' -o -name '*.service' -o -name '*.portal' \) -print0 |
     xargs -0 -r sed -i -E "s#(^|[ =\"'])/usr/(bin|lib|libexec|share)/#\1$PREFIX/\2/#g"
+  # Scripts that name this package's own files under /usr (e.g. /usr/share/<app>) → ~/.local.
+  # Only paths this package ships are rewritten, so system tools like /usr/bin/env stay put.
+  local own=() d
+  for d in "$pkgdir"/usr/share/* "$pkgdir"/usr/lib/* "$pkgdir"/usr/libexec/*; do
+    [[ -e $d && ${d##*/} != applications && ${d##*/} != icons && ${d##*/} != omarchy ]] && own+=("${d#"$pkgdir"}")
+  done
+  if (( ${#own[@]} )); then
+    local expr=() o
+    for o in "${own[@]}"; do expr+=(-e "s#$o\b#$PREFIX${o#/usr}#g"); done
+    grep -rlIZ -e "/usr/" "$pkgdir/usr" 2>/dev/null | xargs -0 -r sed -i "${expr[@]}"
+  fi
   # systemd only reads user units from ~/.local/share/systemd/user (not ~/.local/lib/…)
   if [[ -d $pkgdir/usr/lib/systemd/user ]]; then
     mkdir -p "$pkgdir/usr/share/systemd/user"
