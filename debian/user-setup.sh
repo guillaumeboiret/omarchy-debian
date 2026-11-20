@@ -98,11 +98,14 @@ export PATH
 [ -r "$OMARCHY_PATH/default/bash/env-bootstrap" ] && . "$OMARCHY_PATH/default/bash/env-bootstrap"
 PROFILE
 
-# 10. GNOME Terminal follows Omarchy themes and fonts (it has no Omarchy template of its own)
+# 10. GNOME Terminal and Firefox follow Omarchy themes and fonts (no Omarchy templates of their own)
 for d in theme-set.d font-set.d; do
   mkdir -p "$HOME/.config/omarchy/hooks/$d"
-  ln -sfn "$OM/debian/hooks/gnome-terminal" "$HOME/.config/omarchy/hooks/$d/gnome-terminal"
+  for hook in gnome-terminal firefox; do
+    ln -sfn "$OM/debian/hooks/$hook" "$HOME/.config/omarchy/hooks/$d/$hook"
+  done
 done
+bash "$OM/debian/hooks/firefox"
 # 11. Omarchy's logo glyph font (installed system-wide by the Omarchy package on Arch)
 mkdir -p "$HOME/.local/share/fonts/omarchy"
 ln -sfn "$OM/default/fonts/omarchy/omarchy.ttf" "$HOME/.local/share/fonts/omarchy/omarchy.ttf"
