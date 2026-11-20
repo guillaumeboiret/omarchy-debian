@@ -1,6 +1,51 @@
 -- Debian port: Hyprland 0.55 compatibility shim.
 -- Omarchy targets Hyprland 0.56+. Instead of crashing on APIs/events that 0.55
 -- doesn't have, skip them and record what was skipped in /tmp/omarchy-compat.log.
+-- hl.dsp.workspace.change_id (0.56) renumbers a workspace in place; monitor-workspaces.lua
+-- uses it to fold an unplugged monitor's workspaces into the remaining one. 0.55 has
+-- no equivalent dispatcher, so emulate it: move the windows to the new id, put that
+-- workspace on the same monitor, and show it there if the old one was showing.
+-- hl.dispatch only takes real dispatchers, so it learns to run these stand-ins.
+-- Separately guarded so `hyprctl reload` picks it up without a re-login.
+if not rawget(_G, "__omarchy_compat_055_change_id") and hl.dsp.workspace.change_id == nil then
+  _G.__omarchy_compat_055_change_id = true
+  local STANDIN = {}
+
+  hl.dsp.workspace.change_id = function(args)
+    return { [STANDIN] = function()
+      local old, new = tonumber(args.workspace), tonumber(args.id)
+      local workspace = old and new and hl.get_workspace(old)
+      if not workspace or hl.get_workspace(new) then
+        return
+      end
+
+      local monitor = workspace.monitor and hl.get_monitor(workspace.monitor.name)
+      local showing = monitor and monitor.active_workspace and monitor.active_workspace.id == old
+
+      for _, window in ipairs(hl.get_windows()) do
+        if window.workspace and window.workspace.id == old then
+          hl.dispatch(hl.dsp.window.move({ workspace = tostring(new), follow = false, window = "address:" .. window.address }))
+        end
+      end
+
+      if monitor and hl.get_workspace(new) then
+        hl.dispatch(hl.dsp.workspace.move({ workspace = tostring(new), monitor = monitor.name }))
+        if showing then
+          hl.dispatch(hl.dsp.focus({ workspace = tostring(new) }))
+        end
+      end
+    end }
+  end
+
+  local real_dispatch = hl.dispatch
+  hl.dispatch = function(dispatcher, ...)
+    if type(dispatcher) == "table" and dispatcher[STANDIN] then
+      return dispatcher[STANDIN]()
+    end
+    return real_dispatch(dispatcher, ...)
+  end
+end
+
 if rawget(_G, "__omarchy_compat_055") then return end
 _G.__omarchy_compat_055 = true
 
