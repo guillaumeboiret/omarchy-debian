@@ -137,4 +137,15 @@ systemctl kill -s HUP systemd-logind
 # 23. Omarchy login screen (SDDM, replaces GDM) + Omarchy boot progress bar (Plymouth, normal boots only)
 bash "$OM/debian/login-setup.sh"
 
+# 24. The machine's own name in /etc/hosts (Debian's installer convention). Without it, sudo
+#     warns "unable to resolve host" once libnss-myhostname is gone.
+host=$(hostname)
+if ! grep -qE "^127\.0\.1\.1[[:space:]].*\b$host\b" /etc/hosts; then
+  if grep -q '^127\.0\.1\.1' /etc/hosts; then
+    sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$host/" /etc/hosts
+  else
+    printf '127.0.1.1\t%s\n' "$host" >> /etc/hosts
+  fi
+fi
+
 echo "System part done."
