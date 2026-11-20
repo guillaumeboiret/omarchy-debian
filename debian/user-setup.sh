@@ -106,7 +106,7 @@ ln -sfn "$OM/default/fonts/omarchy/omarchy.ttf" "$HOME/.local/share/fonts/omarch
 fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 # 12. Colour emoji before DejaVu's monochrome ones in font fallback (Arch's noto-fonts-emoji does this)
 mkdir -p "$HOME/.config/fontconfig/conf.d"
-cp "$OM/debian/60-omarchy-emoji.conf" "$HOME/.config/fontconfig/conf.d/"
+cp "$OM/debian/60-omarchy-emoji.conf" "$OM/debian/61-text-symbols-not-emoji.conf" "$HOME/.config/fontconfig/conf.d/"
 fc-cache -f >/dev/null
 # 13. Launchers for Omarchy's lazy mise tools (codex, opencode, amp, ghui…) — they install on first run
 command -v mise >/dev/null && mise reshim
