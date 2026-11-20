@@ -984,7 +984,6 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    slotSize: Style.bar.statusSlot
     text: "󰇧"
     tooltipText: Commons.I18n.t("elsewhen.worldClock")
     onPressed: function(buttonCode) {
