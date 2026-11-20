@@ -137,13 +137,4 @@ systemctl kill -s HUP systemd-logind
 # 23. Omarchy login screen (SDDM, replaces GDM) + Omarchy boot progress bar (Plymouth, normal boots only)
 bash "$OM/debian/login-setup.sh"
 
-# 24. Display + keyboard backlight without root: Debian's brightnessctl is built without logind,
-#     so it writes sysfs directly; its udev rule gives backlights to `video` and LEDs to
-#     `input`. Join `video` and hand the keyboard backlight to `video` too (no `input`, see 21).
-#     Takes effect at next login.
-usermod -aG video "${SUDO_USER:-guillaume}"
-echo 'ACTION=="add", SUBSYSTEM=="leds", KERNEL=="kbd_backlight", RUN+="bright-helper video g+w /sys/class/leds/%k/brightness"' > /etc/udev/rules.d/91-omarchy-kbd-backlight.rules
-udevadm control --reload
-udevadm trigger --action=add --subsystem-match=leds --sysname-match=kbd_backlight
-
 echo "System part done."
