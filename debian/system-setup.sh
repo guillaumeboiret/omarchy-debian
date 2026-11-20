@@ -64,7 +64,7 @@ rm -f /tmp/omarchy-theme-browser.sudoers
 
 # 11. Feature dependencies found by the manual audit
 apt-get install -y rfkill v4l-utils libxkbcommon-tools systemd-coredump npm python3-nautilus fido2-tools \
-  fcitx5 fcitx5-frontend-gtk3 fcitx5-frontend-gtk4 fcitx5-frontend-qt6 fcitx5-config-qt
+  fcitx5 fcitx5-frontend-gtk3 fcitx5-frontend-gtk4 fcitx5-frontend-qt6 fcitx5-config-qt udiskie
 # wl-copy --sensitive (emoji picker, QR capture, "copy code") needs wl-clipboard ≥ 2.3 (backports)
 apt-get install -y -t trixie-backports wl-clipboard
 
