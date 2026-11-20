@@ -4,4 +4,9 @@
 
 # Its own app id, so the dock matches the window to the Herdr launcher, and a
 # second launch focuses that window instead of attaching another terminal.
-exec omarchy-launch-or-focus org.omarchy.herdr "omarchy-launch-terminal --app-id=org.omarchy.herdr herdr"
+# Debian port: the terminal side of the Herdr desktop app is herdr-core (hc),
+# which shares its terminals with the window. The standalone herdr TUI keeps
+# separate sessions, so it is only used when hc isn't installed.
+cmd=herdr
+omarchy-cmd-present hc && cmd=hc
+exec omarchy-launch-or-focus org.omarchy.herdr "omarchy-launch-terminal --app-id=org.omarchy.herdr $cmd"
