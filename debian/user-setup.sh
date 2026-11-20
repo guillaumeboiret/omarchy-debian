@@ -116,8 +116,8 @@ command -v mise >/dev/null && mise reshim
 
 # 14. Debian's desktop-wide autostart entries that don't belong in Omarchy: X11-only tools (picom,
 #     xbindkeys, PulseAudio — PipeWire serves it), tray applets Omarchy's bar replaces, and
-#     im-launch, which exports IBus settings over Omarchy's fcitx5. Hidden for Hyprland only, so
-#     the GNOME fallback session keeps them.
+#     im-launch, which exports IBus settings over Omarchy's fcitx5. Hidden for Hyprland only, and
+#     only for entries that are installed.
 mkdir -p "$HOME/.config/autostart"
 for entry in picom xbindkeys pulseaudio im-launch blueman print-applet spice-vdagent xapp-sn-watcher; do
   src=/etc/xdg/autostart/$entry.desktop
@@ -129,8 +129,11 @@ for entry in picom xbindkeys pulseaudio im-launch blueman print-applet spice-vda
     sed '/^\[Desktop Entry\]/a NotShowIn=Hyprland;' "$src" >"$dst"
   fi
 done
-# mako and hypridle came with the pre-Omarchy setup; Omarchy's shell does notifications and idle
-systemctl --user mask mako.service hypridle.service   # Debian enables both globally; mask is the per-user off switch
+# mako and hypridle, if installed: Omarchy's shell does notifications and idle, and Debian enables
+# both globally; mask is the per-user off switch
+for unit in mako.service hypridle.service hyprpaper.service; do
+  [[ -f /usr/lib/systemd/user/$unit ]] && systemctl --user mask "$unit"
+done
 
 # 15. Input method: Omarchy's fcitx5 environment (installed system-wide on Arch)
 mkdir -p "$HOME/.config/environment.d"
