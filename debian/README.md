@@ -6,7 +6,9 @@ The goal is to run the real Omarchy, not a lookalike: its Hyprland config, Quick
 
 ## Status
 
-Works: the full Omarchy desktop and menu, theme and font switching, the SDDM login screen and Plymouth boot splash, lock screen, screenshots and recording, and Omarchy's own apps, compiled from their Arch recipes.
+Works: the full Omarchy desktop and menu, theme and font switching, the SDDM login screen and Plymouth boot splash, and Omarchy's own apps, compiled from their Arch recipes.
+
+Ported but not yet confirmed in daily use: the lock screen, screenshots and screen recording.
 
 Not built (and why):
 - `hype`: needs Qt 6.9 (Debian has 6.8)
