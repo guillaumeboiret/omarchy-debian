@@ -1,7 +1,12 @@
 #!/bin/bash
 # Debian port of Omarchy — system part (run with sudo). Idempotent.
 set -euo pipefail
-OM=/home/guillaume/.local/share/omarchy
+# The user this machine is set up for (the one who ran sudo) and the port checkout this script lives in.
+# pwd -P resolves the /usr/share/omarchy symlink, so OM is always the real checkout.
+TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || true)}
+[[ -n $TARGET_USER && $TARGET_USER != "root" ]] || { echo "run with sudo from your own account"; exit 1; }
+USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+OM=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 
 # 1. Omarchy expects to live in /usr/share/omarchy
 if [ -e /usr/share/omarchy ] && [ ! -L /usr/share/omarchy ]; then echo "/usr/share/omarchy exists and is not a symlink — aborting"; exit 1; fi
@@ -35,12 +40,12 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then
-  ln -sfn /home/guillaume/.local/lib/omarchy-screensaver /usr/lib/omarchy-screensaver
+  ln -sfn "$USER_HOME/.local/lib/omarchy-screensaver" /usr/lib/omarchy-screensaver
 fi
 
 # 8. folio as the "Open/Save file" picker: xdg-desktop-portal only reads /usr/share/…/portals
-if [ -f /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal ]; then
-  ln -sfn /home/guillaume/.local/share/xdg-desktop-portal/portals/folio.portal /usr/share/xdg-desktop-portal/portals/folio.portal
+if [ -f "$USER_HOME/.local/share/xdg-desktop-portal/portals/folio.portal" ]; then
+  ln -sfn "$USER_HOME/.local/share/xdg-desktop-portal/portals/folio.portal" /usr/share/xdg-desktop-portal/portals/folio.portal
 fi
 
 # 9. Omarchy's scripts are written for GNU awk (Arch's awk); Debian defaults to mawk
@@ -90,7 +95,7 @@ rm -f /tmp/omarchy-tzupdate.sudoers
 
 # 16. Network speed test binary at the path Omarchy expects (built by omarchy-debian)
 install -d /usr/lib/omarchy
-[ -x /home/guillaume/.local/lib/omarchy/speedtest ] && ln -sfn /home/guillaume/.local/lib/omarchy/speedtest /usr/lib/omarchy/speedtest
+[ -x "$USER_HOME/.local/lib/omarchy/speedtest" ] && ln -sfn "$USER_HOME/.local/lib/omarchy/speedtest" /usr/lib/omarchy/speedtest
 
 # 17. Power button: short press = Omarchy power menu (Hyprland XF86PowerOff bind), long press (≥5 s) = power off.
 #     Omarchy's drop-in only ignores the key; on Debian we also keep a long-press shutdown.
