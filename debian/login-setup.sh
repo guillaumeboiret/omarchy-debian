@@ -45,6 +45,15 @@ chown sddm:sddm /var/lib/sddm/state.conf 2>/dev/null || true
 echo /usr/bin/sddm > /etc/X11/default-display-manager
 systemctl disable gdm3.service 2>/dev/null || systemctl disable gdm.service 2>/dev/null || true
 systemctl enable -f sddm.service
+# `enable` alone left display-manager.service unlinked here (boot ended at a text login), so link it
+# explicitly and refuse to finish if it still doesn't point at SDDM.
+ln -sfn /usr/lib/systemd/system/sddm.service /etc/systemd/system/display-manager.service
+systemctl daemon-reload
+systemctl set-default graphical.target
+if [[ $(readlink -f /etc/systemd/system/display-manager.service) != */sddm.service ]]; then
+  echo "display-manager.service does not point at SDDM — aborting"
+  exit 1
+fi
 
 # --- Boot progress bar ------------------------------------------------------------------------
 # Omarchy's Plymouth theme (logo + progress bar). Shown only on normal boots: after a failed or
@@ -54,14 +63,20 @@ cp -r "$OM"/default/plymouth/. /usr/share/plymouth/themes/omarchy/
 chmod -R u=rwX,go=rX /usr/share/plymouth/themes/omarchy
 plymouth-set-default-theme omarchy
 
-cat > /etc/grub.d/05_omarchy_splash <<'GRUB'
-#!/bin/sh
-# Omarchy (Debian port): splash only when the previous boot succeeded.
-cat <<'EOF'
-if [ "${recordfail}" = 1 ]; then set omarchy_splash=; else set omarchy_splash=splash; fi
-export omarchy_splash
-EOF
-GRUB
+# Normal boot = splash and nothing else, like macOS: kernel/udev/systemd messages and the blinking
+# console cursor are silenced. Asahi's kernel has no simpledrm, only the simplefb framebuffer, which
+# Plymouth ignores at boot by default (it waits for the Apple display driver and shows text instead),
+# so force the framebuffer. plymouth.debug only writes /var/log/plymouth-debug.log, for diagnosis.
+splash_args="splash loglevel=3 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
+{
+  echo '#!/bin/sh'
+  echo '# Omarchy (Debian port): silent splash boot only when the previous boot succeeded;'
+  echo '# after a failed/unclean boot (recordfail) the normal text log is shown.'
+  echo "cat <<'EOF'"
+  echo "if [ \"\${recordfail}\" = 1 ]; then set omarchy_splash=; else set omarchy_splash=\"$splash_args\"; fi"
+  echo 'export omarchy_splash'
+  echo 'EOF'
+} > /etc/grub.d/05_omarchy_splash
 chmod 755 /etc/grub.d/05_omarchy_splash
 # $omarchy_splash is expanded by GRUB at boot time, not here.
 if ! grep -q 'omarchy_splash' /etc/default/grub; then
