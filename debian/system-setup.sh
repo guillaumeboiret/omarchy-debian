@@ -121,8 +121,12 @@ update-grub
 # 21. ydotool (voxtype dictation "type" mode) needs /dev/uinput. Omarchy adds the user to the
 #     `input` group, which also exposes every keyboard/mouse for reading; the logged-in seat
 #     user only needs write access to uinput, so grant that via logind (uaccess) instead.
+#     The module must be loaded at boot: /dev/uinput is only a static placeholder until it is,
+#     and the rule has no device to tag.
 echo 'KERNEL=="uinput", TAG+="uaccess"' > /etc/udev/rules.d/71-omarchy-uinput.rules
+echo uinput > /etc/modules-load.d/omarchy-uinput.conf
 udevadm control --reload
-udevadm trigger --name-match=uinput
+modprobe uinput
+udevadm trigger --action=change --sysname-match=uinput
 
 echo "System part done."
