@@ -1,0 +1,35 @@
+#!/bin/bash
+# Debian port (Apple Silicon): print the path of a "quiet" copy of Debian's U-Boot, whose built-in
+# environment sends console output to serial only (no text on the screen between the Apple logo and
+# the Omarchy boot splash) and boots without the 2 s "Hit any key to stop autoboot" wait.
+#
+# Called from /etc/default/update-m1n1 (sourced by update-m1n1) as U_BOOT=$(omarchy-quiet-uboot).
+# The edit is same-length, in U-Boot's default environment (NUL-separated, no checksum):
+#   stdout=vidconsole,serial -> stdout=serial + filler variable   (same for stderr)
+#   bootdelay=2              -> bootdelay=0
+# If any expected string is missing (new U-Boot build), it prints nothing and exits 1, and
+# update-m1n1 falls back to the stock U-Boot.
+set -euo pipefail
+
+src=/usr/lib/u-boot/apple_m1/u-boot-nodtb.bin
+out=/usr/local/lib/omarchy-quiet-uboot/u-boot-nodtb.bin
+
+mkdir -p "$(dirname "$out")"
+python3 -I - "$src" "$out.tmp" <<'PY'
+import sys
+src, out = sys.argv[1], sys.argv[2]
+data = open(src, "rb").read()
+edits = [
+    (b"\0stdout=vidconsole,serial\0", b"\0stdout=serial\0omq1=00000\0"),
+    (b"\0stderr=vidconsole,serial\0", b"\0stderr=serial\0omq2=00000\0"),
+    (b"\0bootdelay=2\0", b"\0bootdelay=0\0"),
+]
+for old, new in edits:
+    assert len(old) == len(new)
+    if data.count(old) != 1:
+        sys.exit(f"omarchy-quiet-uboot: {old!r} not found exactly once in {src}")
+    data = data.replace(old, new)
+open(out, "wb").write(data)
+PY
+mv -f "$out.tmp" "$out"
+echo "$out"
