@@ -36,7 +36,7 @@ hl.on("hyprland.start", function()
 end)
 -- GNOME Terminal counts as a terminal for Omarchy (⌘C/⌘V copy/paste, theme opacity)
 o.window("org\\.gnome\\.Terminal", { tag = "+terminal" })
-hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 })
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })
 LUA
 grep -q 'require("hypr.debian")' "$HOME/.config/hypr/hyprland.lua" || echo 'require("hypr.debian")' >> "$HOME/.config/hypr/hyprland.lua"
 
