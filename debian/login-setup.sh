@@ -73,7 +73,7 @@ plymouth-set-default-theme omarchy
 # console cursor are silenced. Asahi's kernel has no simpledrm, only the simplefb framebuffer, which
 # Plymouth ignores at boot by default (it waits for the Apple display driver and shows text instead),
 # so force the framebuffer. plymouth.debug only writes /var/log/plymouth-debug.log, for diagnosis.
-splash_args="splash loglevel=3 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
+splash_args="splash loglevel=0 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
 {
   echo '#!/bin/sh'
   echo '# Omarchy (Debian port): silent splash boot only when the previous boot succeeded;'
@@ -88,6 +88,25 @@ chmod 755 /etc/grub.d/05_omarchy_splash
 if ! grep -q 'omarchy_splash' /etc/default/grub; then
   sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 \\$omarchy_splash"/' /etc/default/grub
 fi
+# Normal boots: no GRUB menu (Esc/Shift still shows it) and no "Loading Linux ..." lines. After a
+# failed boot the recordfail branch of GRUB's timeout code still shows the menu for 5 s.
+if grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub; then
+  sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub
+else
+  echo 'GRUB_TIMEOUT_STYLE=hidden' >> /etc/default/grub
+fi
+# Debian hardcodes quiet_boot=0 in this conffile (Ubuntu sets 1); a grub upgrade may ask about it.
+sed -i 's/^quiet_boot="0"/quiet_boot="1"/' /etc/grub.d/10_linux
+
+# Keep the last splash frame on screen until SDDM's compositor takes the display. Debian's
+# plymouth-quit runs as soon as boot is done and SDDM is not ordered after it, so the text console
+# showed for a few seconds while the greeter started (GDM does this handover itself).
+install -d -m 755 /etc/systemd/system/plymouth-quit.service.d
+printf '[Service]\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n' > /etc/systemd/system/plymouth-quit.service.d/omarchy-retain-splash.conf
+install -d -m 755 /etc/systemd/system/sddm.service.d
+printf '[Unit]\nAfter=plymouth-quit.service\n' > /etc/systemd/system/sddm.service.d/omarchy-after-plymouth.conf
+systemctl daemon-reload
+
 update-grub
 update-initramfs -u
 
