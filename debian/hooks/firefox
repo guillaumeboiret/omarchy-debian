@@ -17,10 +17,21 @@ mode=$(sed -nE 's/^mode[[:space:]]*=[[:space:]]*"([a-z]+)".*/\1/p' "$colors")
 scheme=${mode:-dark}
 font=$(omarchy-font-current 2>/dev/null); font=${font:-monospace}
 
+# Firefox 160's own look is built on a violet palette; remap every violet step to shades of the accent
+violet=""
+for step in 0:15:fg 10:30:fg 20:50:fg 30:70:fg 40:85:fg 50:100:fg 60:80:bg 70:60:bg 80:40:bg 90:25:bg 100:15:bg 110:8:bg; do
+  IFS=: read -r n pct base <<<"$step"
+  if [[ $base == "fg" ]]; then base="var(--om-fg)"; else base="var(--om-bg-darker)"; fi
+  mix="color-mix(in srgb, var(--om-accent) $pct%, $base)"
+  violet+="  --color-violet-$n: $mix !important;"$'\n'
+  (( n <= 90 )) && violet+="  --color-violet-desaturated-$n: $mix !important;"$'\n'
+done
+
 read -r -d '' vars <<EOF
   --om-bg: $bg; --om-bg-dark: $bg_dark; --om-bg-darker: $bg_darker; --om-bg-light: $bg_light;
   --om-fg: $fg; --om-fg-light: $fg_light; --om-muted: $muted; --om-accent: $accent;
   --om-sel: $sel; --om-red: $red; --om-font: "$font";
+$violet
 EOF
 
 read -r -d '' square <<'EOF'
@@ -88,6 +99,21 @@ $square
   --lwt-header-image: none !important;
   --input-bgcolor: var(--om-bg-dark) !important;
   --input-color: var(--om-fg) !important;
+  --input-background-color: var(--om-bg-dark) !important;
+  --toolbar-field-border-color-focus: var(--om-accent) !important;
+  --toolbar-field-background-color-focus: var(--om-bg-darker) !important;
+  --urlbar-background-color: var(--om-bg-dark) !important;
+  --urlbar-background-color-focus: var(--om-bg-darker) !important;
+  --urlbarview-background-color-hover: var(--om-bg-light) !important;
+  --urlbarview-background-color-selected: var(--om-sel) !important;
+  --urlbar-box-background-color: var(--om-bg-light) !important;
+  --urlbar-box-background-color-focus: var(--om-sel) !important;
+  --smartbar-background-color: var(--om-bg-darker) !important;
+  --smartbar-inactive-background-color: var(--om-bg-dark) !important;
+  --smartbar-outline-color: var(--om-accent) !important;
+  --smartbar-glow-color: transparent !important;
+  --smartbar-border-color-gradient: linear-gradient(var(--om-accent), var(--om-accent)) !important;
+  --smartbar-box-shadow: none !important;
 }
 
 /* Square everything */
