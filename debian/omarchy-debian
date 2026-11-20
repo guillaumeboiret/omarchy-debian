@@ -290,6 +290,10 @@ case ${1:-help} in
     if command -v nvim >/dev/null && [[ -d $HOME/.config/nvim ]]; then
       say "Updating Neovim plugins"; nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 || warn "Neovim plugin update failed"
     fi
+    if [[ -x $HOME/src/omarchy-dotfiles/sync.sh ]]; then
+      say "Backing up personal configs to GitHub"
+      "$HOME/src/omarchy-dotfiles/sync.sh" --push >/dev/null 2>&1 || warn "dotfiles backup failed"
+    fi
     if [[ -n ${OMARCHY_DEBIAN_WITH_APT:-} ]]; then
       say "Omarchy part done."
     else
