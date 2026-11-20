@@ -36,9 +36,12 @@ hl.on("hyprland.start", function()
 end)
 -- GNOME Terminal counts as a terminal for Omarchy (⌘C/⌘V copy/paste, theme opacity)
 o.window("org\\.gnome\\.Terminal", { tag = "+terminal" })
-hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })
 LUA
 grep -q 'require("hypr.debian")' "$HOME/.config/hypr/hyprland.lua" || echo 'require("hypr.debian")' >> "$HOME/.config/hypr/hyprland.lua"
+# Retina panel default in hypr/monitors.lua: it loads before the display panel's
+# saved layout, so that layout wins (in debian.lua it loaded last and pinned eDP-1).
+grep -q 'output = "eDP-1"' "$HOME/.config/hypr/monitors.lua" ||
+  printf '\n-- Debian port: Retina panel default (the display panel'"'"'s saved choices win).\nhl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 2 })\n' >> "$HOME/.config/hypr/monitors.lua"
 
 # 3. File chooser: folio (built by omarchy-debian) with GTK as fallback — Omarchy's default
 
