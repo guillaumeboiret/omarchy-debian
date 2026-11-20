@@ -29,6 +29,7 @@ backlight_brightness() {
   brightnessctl -d "$1" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
 }
 
+explicit_monitor="$monitor"
 [[ -n $monitor ]] || monitor="$(omarchy-hyprland-monitor-focused 2>/dev/null || true)"
 
 monitor_is_internal() {
@@ -65,6 +66,14 @@ monitor_may_have_ddc() {
 use_backlight_display() {
   [[ -z $monitor ]] || monitor_is_internal
 }
+
+# Debian port: the brightness keys (no --monitor) follow the focused display,
+# but an external one with no way to dim it (Apple Silicon HDMI has no DDC)
+# would make them do nothing. Like macOS, they then dim the built-in panel.
+# The display panel's slider names its monitor and is left alone.
+if [[ -z $explicit_monitor && -n $monitor ]] && ! monitor_is_internal && ! use_apple_display && ! use_ddc_display; then
+  monitor=""
+fi
 
 if (( $# == 0 )); then
   if use_apple_display; then
