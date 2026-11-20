@@ -73,7 +73,9 @@ plymouth-set-default-theme omarchy
 # console cursor are silenced. Asahi's kernel has no simpledrm, only the simplefb framebuffer, which
 # Plymouth ignores at boot by default (it waits for the Apple display driver and shows text instead),
 # so force the framebuffer. plymouth.debug only writes /var/log/plymouth-debug.log, for diagnosis.
-splash_args="splash loglevel=0 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
+# fbcon=vc:2-63: no text console on tty1 (boot/greeter VT) - when the splash drops the display, the
+# kernel would otherwise flash tty1's text before SDDM appears. Ctrl+Alt+F2..F6 still have consoles.
+splash_args="splash loglevel=0 fbcon=vc:2-63 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
 {
   echo '#!/bin/sh'
   echo '# Omarchy (Debian port): silent splash boot only when the previous boot succeeded;'
