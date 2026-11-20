@@ -104,4 +104,13 @@ systemctl kill -s HUP systemd-logind   # reload config without ending sessions
 install -d -m 755 /usr/lib/firefox/distribution
 install -o root -g root -m 644 "$OM/default/firefox/policies.json" /usr/lib/firefox/distribution/policies.json
 
+# 19. Readable boot/TTY text on the Retina panel: kernel console font Terminus 16x32 from the first
+#     boot message (fbcon=), and the same size for the TTYs once console-setup runs.
+if ! grep -q 'fbcon=font:TER16x32' /etc/default/grub; then
+  sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 fbcon=font:TER16x32"/' /etc/default/grub
+  update-grub
+fi
+sed -i -e 's/^FONTFACE=.*/FONTFACE="Terminus"/' -e 's/^FONTSIZE=.*/FONTSIZE="16x32"/' /etc/default/console-setup
+setupcon --save-only 2>/dev/null || true
+
 echo "System part done."
