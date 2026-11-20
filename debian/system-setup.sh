@@ -170,4 +170,43 @@ systemctl enable --now systemd-oomd
 systemctl restart systemd-oomd
 systemctl --machine="$TARGET_USER@" --user daemon-reload
 
+# 26. omarchy-mac's audio watchdog stops the shell before restarting PipeWire/WirePlumber (Quickshell
+#     crashes under a vanishing PipeWire). On Debian, Quickshell 0.3 segfaults on a graceful kill and
+#     its crash handler relaunches a second shell, so the watchdog never sees 0 instances, gives up
+#     ("the shell could not be stopped") and the built-in mic stays dead after WirePlumber loses it
+#     (dictation records silence). Kill the shell + crash handler outright, as omarchy-restart-shell does.
+WD=/usr/local/bin/omarchy-audio-watchdog
+if [[ -f $WD ]] && ! grep -q 'Debian port: SIGKILL' "$WD"; then
+  python3 - "$WD" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = """        if count == 0:
+            return 'none'
+        for _ in range(10):"""
+new = """        if count == 0:
+            return 'none'
+        if os.path.exists('/etc/debian_version'):
+            # Debian port: SIGKILL the shell and its crash handler (Quickshell 0.3 segfaults on a
+            # graceful kill and the crash handler relaunches a second shell).
+            listing = self.output('quickshell', 'list', '-a', '-j', timeout=5) or ''
+            try:
+                pids = [i['pid'] for i in json.loads(listing[listing.find('['):]) if i.get('config_path') == os.environ['OMARCHY_PATH'] + '/shell/shell.qml']
+            except (ValueError, TypeError, KeyError):
+                pids = []
+            for pid in pids:
+                children = self.output('pgrep', '-P', str(pid), timeout=5) or ''
+                for victim in children.split() + [str(pid)]:
+                    with contextlib.suppress(ProcessLookupError, ValueError):
+                        os.kill(int(victim), 9)
+            self.sleep(0.5)
+            if self.shell_instances() == 0:
+                return 'stopped'
+        for _ in range(10):"""
+if s.count(old) != 1:
+    sys.exit('omarchy-audio-watchdog changed upstream: stop_shell patch no longer applies')
+open(p, 'w').write(s.replace(old, new))
+PY
+fi
+
 echo "System part done."
