@@ -11,8 +11,21 @@ set -e
 # Debian port: there is no pacman here. Update Omarchy, its apps and Flatpaks with the Debian
 # updater, then the Debian packages with apt (the reason lives in debian/omarchy-debian).
 if [[ -f /etc/debian_version ]]; then
-  "$OMARCHY_PATH/debian/omarchy-debian" update
-  sudo apt update && sudo apt upgrade
+  # Ask for the password up front and keep it fresh, so the apt step at the end doesn't
+  # wait for it after the (long) app builds.
+  echo "Your password is needed for the Debian packages (apt) at the end:"
+  sudo true
+  ( while sleep 60; do kill -0 $$ 2>/dev/null && sudo -n true 2>/dev/null || exit 0; done ) &
+  keepalive=$!
+  trap 'kill "$keepalive" 2>/dev/null' EXIT
+  OMARCHY_DEBIAN_WITH_APT=1 "$OMARCHY_PATH/debian/omarchy-debian" update
+  printf '\e[1;32m==>\e[0;1m Updating Debian packages\e[0m\n'
+  sudo apt update
+  if [[ $1 == "-y" ]]; then
+    sudo apt upgrade -y
+  else
+    sudo apt upgrade
+  fi
   exit
 fi
 

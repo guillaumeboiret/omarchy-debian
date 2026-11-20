@@ -290,7 +290,11 @@ case ${1:-help} in
     if command -v nvim >/dev/null && [[ -d $HOME/.config/nvim ]]; then
       say "Updating Neovim plugins"; nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 || warn "Neovim plugin update failed"
     fi
-    say "Done. (Debian packages are updated separately: sudo apt update && sudo apt upgrade)" ;;
+    if [[ -n ${OMARCHY_DEBIAN_WITH_APT:-} ]]; then
+      say "Omarchy part done."
+    else
+      say "Done. (Debian packages are updated separately: sudo apt update && sudo apt upgrade)"
+    fi ;;
   apps) shift; apps_cmd "$@" ;;
   *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
