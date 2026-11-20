@@ -49,4 +49,14 @@ mechanism, read the skill files directly and follow them instead:
 PROMPT
 )
 
-exec omarchy-agent --prompt "$prompt"
+# ~/.config/omarchy/defaults/crash-agent picks the agent for crashes alone, so
+# diagnosis can use a different harness than the everyday default.
+crash_agent=""
+crash_agent_file="$HOME/.config/omarchy/defaults/crash-agent"
+[[ -s $crash_agent_file ]] && read -r crash_agent <"$crash_agent_file"
+
+if [[ -n $crash_agent ]]; then
+  exec omarchy-agent --agent "$crash_agent" --prompt "$prompt"
+else
+  exec omarchy-agent --prompt "$prompt"
+fi
