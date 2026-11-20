@@ -118,4 +118,11 @@ sed -i -e 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' -e 's/^GRUB_RECORDFAIL_TIMEOUT=.*
 grep -q '^GRUB_RECORDFAIL_TIMEOUT=' /etc/default/grub || echo 'GRUB_RECORDFAIL_TIMEOUT=5' >> /etc/default/grub
 update-grub
 
+# 21. ydotool (voxtype dictation "type" mode) needs /dev/uinput. Omarchy adds the user to the
+#     `input` group, which also exposes every keyboard/mouse for reading; the logged-in seat
+#     user only needs write access to uinput, so grant that via logind (uaccess) instead.
+echo 'KERNEL=="uinput", TAG+="uaccess"' > /etc/udev/rules.d/71-omarchy-uinput.rules
+udevadm control --reload
+udevadm trigger --name-match=uinput
+
 echo "System part done."
