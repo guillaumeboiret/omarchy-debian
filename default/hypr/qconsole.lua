@@ -136,7 +136,9 @@ local function refit(monitor)
   if fit(monitor or console_monitor()) then
     -- Land the new gaps in this pass rather than a frame later, so the console
     -- does not visibly resize itself once it has already dropped down.
-    hl.exec_scheduled_prop_refresh_immediately()
+    if hl.exec_scheduled_prop_refresh_immediately then  -- Debian port: 0.56+ only; 0.55 applies it a frame later
+      hl.exec_scheduled_prop_refresh_immediately()
+    end
   end
 end
 
