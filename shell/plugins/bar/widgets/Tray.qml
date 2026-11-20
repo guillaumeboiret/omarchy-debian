@@ -837,7 +837,20 @@ BarWidget {
   component TrayIcon: Item {
     id: trayIconRoot
     required property var icon
+    // Debian port (local choice): a busy item (Voxtype transcribing) is painted
+    // in the theme's warning colour and pulses, so "stopped recording, text not
+    // typed yet" reads differently from idle at bar size.
+    property bool busy: false
     readonly property bool symbolic: root.iconIsSymbolic(icon)
+    readonly property bool tinted: symbolic || busy
+
+    SequentialAnimation on opacity {
+      running: trayIconRoot.busy
+      loops: Animation.Infinite
+      onRunningChanged: if (!running) trayIconRoot.opacity = 1
+      NumberAnimation { to: 0.35; duration: 500; easing.type: Easing.InOutQuad }
+      NumberAnimation { to: 1; duration: 500; easing.type: Easing.InOutQuad }
+    }
 
     Image {
       id: trayIconImage
@@ -849,17 +862,17 @@ BarWidget {
       sourceSize.height: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
       source: root.trayIconSource(trayIconRoot.icon)
       // Kept as a hidden layer so the effect can sample it as a texture.
-      visible: !trayIconRoot.symbolic
-      layer.enabled: trayIconRoot.symbolic
+      visible: !trayIconRoot.tinted
+      layer.enabled: trayIconRoot.tinted
     }
 
     // Paint the foreground through the icon's alpha. MultiEffect's colorization
     // keeps the source's lightness, so a dark fill stayed dark on a dark bar.
     Rectangle {
       anchors.fill: trayIconImage
-      color: root.foreground
-      visible: trayIconRoot.symbolic
-      layer.enabled: trayIconRoot.symbolic
+      color: trayIconRoot.busy ? Commons.Color.warning : root.foreground
+      visible: trayIconRoot.tinted
+      layer.enabled: trayIconRoot.tinted
       layer.effect: MultiEffect {
         maskEnabled: true
         maskSource: trayIconImage
@@ -902,6 +915,8 @@ BarWidget {
       width: Style.bar.iconSize
       height: Style.bar.iconSize
       icon: trayItemRoot.modelData.icon
+      busy: trayItemRoot.modelData.id === "voxtype"
+        && String(trayItemRoot.modelData.tooltipTitle || "").indexOf("Transcribing") !== -1
     }
 
     MouseArea {
