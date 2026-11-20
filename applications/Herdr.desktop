@@ -1,6 +1,6 @@
 [Desktop Entry]
 Version=1.0
-Name=Herdr
+Name=Herdr Terminal
 Comment=Open or reattach to your persistent terminal workspace
 Exec=omarchy-launch-terminal-herdr
 Icon=herdr
