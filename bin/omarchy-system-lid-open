@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Cancel the pending lid sleep and reconcile displays when the lid opens
+# omarchy:group=system
+# omarchy:hidden=true
+
+# Debian port: opening the lid within 30 s of closing it cancels the lock + suspend that
+# omarchy-system-lid-close scheduled.
+systemctl --user stop omarchy-lid-sleep.timer >/dev/null 2>&1 || true
+
+omarchy-hyprland-monitor-clamshell

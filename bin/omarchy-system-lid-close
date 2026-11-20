@@ -14,8 +14,17 @@
 # ignore, and omarchy-system-lid-inhibit covers displays logind does not count),
 # so it must not lock either: that is clamshell mode, still in use on the
 # external display.
-if omarchy-hw-laptop-closed && ! omarchy-hw-external-monitors; then
-  omarchy-system-lock >/dev/null 2>&1 || true
+#
+# Debian port (Mac-like lid): logind ignores the lid (system-setup step 22). Closing it schedules
+# lock + suspend 30 s later, cancelled by opening the lid (omarchy-system-lid-open). With Stay
+# Awake (the coffee icon) on, a closed lid neither locks nor sleeps.
+stay_awake="$HOME/.local/state/omarchy/indicators/stay-awake"
+if omarchy-hw-laptop-closed && ! omarchy-hw-external-monitors && [[ ! -f $stay_awake ]]; then
+  systemctl --user stop omarchy-lid-sleep.timer >/dev/null 2>&1 || true
+  systemd-run --user --quiet --collect --unit=omarchy-lid-sleep --on-active=30 \
+    /bin/bash -c "omarchy-hw-laptop-closed && ! omarchy-hw-external-monitors && [[ ! -f '$stay_awake' ]] || exit 0
+      omarchy-system-lock >/dev/null 2>&1 || true
+      systemctl suspend"
 fi
 
 omarchy-hyprland-monitor-clamshell

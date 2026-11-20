@@ -129,4 +129,9 @@ udevadm control --reload
 modprobe uinput
 udevadm trigger --action=change --sysname-match=uinput
 
+# 22. Mac-like lid: logind leaves the lid to Omarchy (omarchy-system-lid-close: lock + suspend 30 s
+#     after closing, cancelled on open, skipped with Stay Awake). Docked stays ignored.
+printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' > /etc/systemd/logind.conf.d/30-omarchy-lid.conf
+systemctl kill -s HUP systemd-logind
+
 echo "System part done."
