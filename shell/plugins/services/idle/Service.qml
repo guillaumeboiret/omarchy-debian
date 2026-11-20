@@ -83,7 +83,10 @@ Item {
   function launchScreensaver() {
     root.screensaverStartedThisCycle = true
     screensaverLaunchGraceTimer.restart()
-    runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
+    // Debian port: in lock-after-screensaver mode the screensaver holds on input (patched app) so
+    // the lock can cover it before it closes — no flash of the desktop.
+    var launch = root.lockAfterScreensaver ? "OMARCHY_SCREENSAVER_HOLD=1 omarchy-launch-screensaver" : "omarchy-launch-screensaver"
+    runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || " + launch)
   }
 
   function lockSystem(reason) {
@@ -154,6 +157,7 @@ Item {
     // Input the screensaver never sees (a bound media key, a touchscreen) still means the user is back.
     if (root.screensaverStartedThisCycle && root.lockAfterScreensaver && !inLaunchGrace) {
       root.lockSystem("screensaver-dismissed")
+      screensaverReleaseTimer.restart()
       return
     }
     if (root.screensaverStartedThisCycle) screensaverStopProcess.running = true
@@ -298,6 +302,13 @@ Item {
       root.logEvent("process-exit", "screensaver exitCode=" + exitCode + " status=" + exitStatus)
       root.handleScreensaverExited()
     }
+  }
+  // Debian port: close the held screensaver once the lock is up over it (it gives up by itself after 5 s).
+  Timer {
+    id: screensaverReleaseTimer
+    interval: 1500
+    repeat: false
+    onTriggered: screensaverStopProcess.running = true
   }
   Process {
     id: screensaverStopProcess
