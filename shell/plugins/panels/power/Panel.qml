@@ -477,6 +477,20 @@ Panel {
           }
         }
 
+        // ---------- Last 24 hours ----------
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
+        BatteryHistory {
+          width: parent.width
+          active: root.opened && root.batteryPresent
+          liveLevel: root.batteryPresent ? Math.round(root.batteryFraction * 100) : -1
+          liveCharging: root.charging
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
         // ---------- Power profile picker ----------
         PanelSeparator {
           foreground: root.bar.foreground
