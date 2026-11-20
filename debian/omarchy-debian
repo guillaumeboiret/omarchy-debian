@@ -236,6 +236,27 @@ update_omarchy() {
   else
     say "Omarchy is already up to date"
   fi
+  backup_port "$before"
+}
+
+# Mirror the port to the private GitHub backup (remote `backup`). A rebase rewrites the
+# branch, so this force-pushes — but only when everything on GitHub is already contained
+# in what was here before the update; otherwise it leaves GitHub alone and says so.
+backup_port() {
+  local before=$1 remote_tip
+  git remote get-url backup >/dev/null 2>&1 || return 0
+  if ! git fetch -q backup debian-port 2>/dev/null; then
+    warn "couldn't reach the GitHub backup — not pushed"
+    return 0
+  fi
+  remote_tip=$(git rev-parse FETCH_HEAD)
+  [[ $remote_tip == "$(git rev-parse HEAD)" ]] && return 0
+  if git merge-base --is-ancestor "$remote_tip" "$before" || git merge-base --is-ancestor "$remote_tip" HEAD; then
+    say "Backing up the port to GitHub"
+    git push -q --force-with-lease="debian-port:$remote_tip" backup HEAD:debian-port || warn "GitHub backup push failed"
+  else
+    warn "the GitHub backup has commits that aren't here — not overwritten. Ask Claude to sort it out."
+  fi
 }
 
 build_steps() {
