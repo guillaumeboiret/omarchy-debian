@@ -31,9 +31,15 @@ install -d -m 755 /usr/local/share/fonts/omarchy
 install -m 644 /home/guillaume/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf /usr/local/share/fonts/omarchy/
 fc-cache -f /usr/local/share/fonts/omarchy >/dev/null
 
-# Same as upstream install/login/sddm.sh: no login keyring prompt clash.
-if [ -f /etc/pam.d/sddm ]; then
-  sed -i -e '/-auth.*pam_gnome_keyring\.so/d' -e '/-password.*pam_gnome_keyring\.so/d' /etc/pam.d/sddm
+# Unlock the GNOME login keyring with the login password. Upstream (install/login/sddm.sh) DELETES
+# these lines because Omarchy's keyring is passwordless; this machine's keyring came from GDM and is
+# password-protected (gh token, browser secrets), so without them every login pops "The login keyring
+# did not get unlocked" and gh/git push fail. Debian's stock /etc/pam.d/sddm has both lines.
+if ! grep -q '^-auth.*pam_gnome_keyring\.so' /etc/pam.d/sddm; then
+  sed -i '0,/^@include common-auth/s//@include common-auth\n-auth   optional        pam_gnome_keyring.so/' /etc/pam.d/sddm
+fi
+if ! grep -q '^-password.*pam_gnome_keyring\.so' /etc/pam.d/sddm; then
+  sed -i '0,/^@include common-password/s//@include common-password\n-password optional      pam_gnome_keyring.so use_authtok/' /etc/pam.d/sddm
 fi
 
 # Preselect the Omarchy (uwsm) session (the theme also picks the uwsm session itself).
