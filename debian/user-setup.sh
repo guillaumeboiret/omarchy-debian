@@ -110,3 +110,25 @@ cp "$OM/debian/60-omarchy-emoji.conf" "$HOME/.config/fontconfig/conf.d/"
 fc-cache -f >/dev/null
 # 13. Launchers for Omarchy's lazy mise tools (codex, opencode, amp, ghui…) — they install on first run
 command -v mise >/dev/null && mise reshim
+
+# 14. Debian's desktop-wide autostart entries that don't belong in Omarchy: X11-only tools (picom,
+#     xbindkeys, PulseAudio — PipeWire serves it), tray applets Omarchy's bar replaces, and
+#     im-launch, which exports IBus settings over Omarchy's fcitx5. Hidden for Hyprland only, so
+#     the GNOME fallback session keeps them.
+mkdir -p "$HOME/.config/autostart"
+for entry in picom xbindkeys pulseaudio im-launch blueman print-applet spice-vdagent xapp-sn-watcher; do
+  src=/etc/xdg/autostart/$entry.desktop
+  dst=$HOME/.config/autostart/$entry.desktop
+  [[ -f $src && ! -f $dst ]] || continue
+  if grep -q '^NotShowIn=' "$src"; then
+    sed 's/^NotShowIn=\(.*\)/NotShowIn=\1;Hyprland;/; s/;;/;/g' "$src" >"$dst"
+  else
+    sed '/^\[Desktop Entry\]/a NotShowIn=Hyprland;' "$src" >"$dst"
+  fi
+done
+# mako and hypridle came with the pre-Omarchy setup; Omarchy's shell does notifications and idle
+systemctl --user mask mako.service hypridle.service   # Debian enables both globally; mask is the per-user off switch
+
+# 15. Input method: Omarchy's fcitx5 environment (installed system-wide on Arch)
+mkdir -p "$HOME/.config/environment.d"
+cp "$OM/default/environment.d/10-omarchy-fcitx.conf" "$HOME/.config/environment.d/"
