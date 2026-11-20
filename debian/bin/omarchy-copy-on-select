@@ -1,0 +1,52 @@
+#!/bin/bash
+# Copy on select: whatever text gets selected anywhere (the Wayland primary
+# selection) also goes to the clipboard, so Cmd+V pastes it.
+#
+#   omarchy-copy-on-select          watch (run by omarchy-copy-on-select.service)
+#   omarchy-copy-on-select __sync   one sync pass (run by wl-paste on each change)
+#
+# Apps announce a primary selection when a drag starts, not when it ends, and
+# hand out the current text whenever asked. So each change starts a short pass
+# that copies the selection once it stops growing, and keeps copying while the
+# drag goes on (pauses included), until it has been still for 3 s.
+
+set -u
+
+if [[ ${1:-} != __sync ]]; then
+  exec wl-paste --primary --type text --watch "$0" __sync
+fi
+
+# wl-paste hands us the text on stdin at announce time; we re-read instead.
+cat >/dev/null
+
+# One pass at a time: a newer change takes over from an older pass.
+lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-copy-on-select.pid"
+old=$(cat "$lock" 2>/dev/null)
+[[ -n $old ]] && kill "$old" 2>/dev/null
+echo $$ >"$lock"
+
+read_primary() { timeout 1 wl-paste --primary --type text --no-newline 2>/dev/null; }
+
+copied=""
+last=$(read_primary)
+stable=0
+for ((i = 0; i < 300; i++)); do # 60 s cap for very long drags
+  sleep 0.2
+  now=$(read_primary)
+  if [[ $now == "$last" ]]; then
+    ((stable++))
+  else
+    stable=0
+    last=$now
+  fi
+
+  # Still for 0.4 s: copy it, unless it is blank or already there.
+  if ((stable == 2)) && [[ $now != "$copied" && $now =~ [^[:space:]] ]]; then
+    printf '%s' "$now" | wl-copy --type text/plain
+    copied=$now
+  fi
+
+  ((stable >= 15)) && break # still for 3 s: the selection is done
+done
+
+[[ $(cat "$lock" 2>/dev/null) == $$ ]] && rm -f "$lock"
