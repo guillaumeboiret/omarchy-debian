@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Debian port: Debian builds brightnessctl without logind support, so a `set`
+# needs write access to sysfs (the `video`/`input` groups). Arch's build asks
+# logind instead, which lets the active session's user set any backlight or
+# LED without root. Do the same here: when the device file isn't writable,
+# let the real brightnessctl compute the new value (--pretend) and hand it to
+# logind's SetBrightness. Everything else goes straight to the real binary.
+
+real=/usr/bin/brightnessctl
+
+is_set=0
+quiet=0
+args=()
+for arg in "$@"; do
+  case "$arg" in
+  set | s) is_set=1 ;;
+  -q | --quiet) quiet=1; continue ;;
+  esac
+  args+=("$arg")
+done
+
+if (( ! is_set )); then
+  exec "$real" "$@"
+fi
+
+info=$("$real" -m "${args[@]}" --pretend 2>/dev/null | tail -1)
+IFS=, read -r device class value _ _ <<<"$info"
+
+if [[ -z $device || -z $class || ! $value =~ ^[0-9]+$ || -w /sys/class/$class/$device/brightness ]]; then
+  exec "$real" "$@"
+fi
+
+busctl call org.freedesktop.login1 /org/freedesktop/login1/session/auto \
+  org.freedesktop.login1.Session SetBrightness ssu "$class" "$device" "$value" >/dev/null || exit 1
+
+(( quiet )) || "$real" -d "$device" -m 2>/dev/null
+exit 0
