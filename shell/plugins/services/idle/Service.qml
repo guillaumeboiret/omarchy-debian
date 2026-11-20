@@ -156,8 +156,7 @@ Item {
   function userReturned(inLaunchGrace) {
     // Input the screensaver never sees (a bound media key, a touchscreen) still means the user is back.
     if (root.screensaverStartedThisCycle && root.lockAfterScreensaver && !inLaunchGrace) {
-      root.lockSystem("screensaver-dismissed")
-      screensaverReleaseTimer.restart()
+      root.lockSystem("screensaver-dismissed")  // omarchy-system-lock closes the screensaver once the lock is secure
       return
     }
     if (root.screensaverStartedThisCycle) screensaverStopProcess.running = true
@@ -302,13 +301,6 @@ Item {
       root.logEvent("process-exit", "screensaver exitCode=" + exitCode + " status=" + exitStatus)
       root.handleScreensaverExited()
     }
-  }
-  // Debian port: close the held screensaver once the lock is up over it (it gives up by itself after 5 s).
-  Timer {
-    id: screensaverReleaseTimer
-    interval: 1500
-    repeat: false
-    onTriggered: screensaverStopProcess.running = true
   }
   Process {
     id: screensaverStopProcess
