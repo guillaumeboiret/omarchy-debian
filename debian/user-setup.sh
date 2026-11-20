@@ -138,8 +138,9 @@ cp "$OM/default/environment.d/10-omarchy-fcitx.conf" "$HOME/.config/environment.
 if [[ ! -d $HOME/.local/share/icons/macOS ]]; then
   tmp=$(mktemp -d)
   curl -fsSL -o "$tmp/macOS.tar.xz" https://github.com/ful1e5/apple_cursor/releases/latest/download/macOS.tar.xz
+  tar -xJf "$tmp/macOS.tar.xz" -C "$tmp"   # entries are ./macOS/ and ./macOS-White/
   mkdir -p "$HOME/.local/share/icons"
-  tar -xJf "$tmp/macOS.tar.xz" -C "$HOME/.local/share/icons" macOS
+  mv "$tmp/macOS" "$HOME/.local/share/icons/"
   rm -rf "$tmp"
 fi
 mkdir -p "$HOME/.icons/default"
