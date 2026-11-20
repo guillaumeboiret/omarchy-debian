@@ -156,3 +156,22 @@ mkdir -p "$HOME/.icons/default"
 printf '[Icon Theme]\nInherits=macOS\n' >"$HOME/.icons/default/index.theme"
 gsettings set org.gnome.desktop.interface cursor-theme macOS
 gsettings set org.gnome.desktop.interface cursor-size 24
+
+# 17. Copy on select: selected text also goes to the clipboard (debian/bin/omarchy-copy-on-select)
+mkdir -p "$HOME/.config/systemd/user"
+cat >"$HOME/.config/systemd/user/omarchy-copy-on-select.service" <<'UNIT'
+[Unit]
+Description=Copy selected text to the clipboard (copy on select)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/share/omarchy/debian/bin/omarchy-copy-on-select
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable omarchy-copy-on-select.service
