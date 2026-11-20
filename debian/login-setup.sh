@@ -79,7 +79,14 @@ splash_args="splash loglevel=0 rd.udev.log_level=3 udev.log_level=3 systemd.show
   echo '# Omarchy (Debian port): silent splash boot only when the previous boot succeeded;'
   echo '# after a failed/unclean boot (recordfail) the normal text log is shown.'
   echo "cat <<'EOF'"
-  echo "if [ \"\${recordfail}\" = 1 ]; then set omarchy_splash=; else set omarchy_splash=\"$splash_args\"; fi"
+  # GRUB itself prints to the firmware console (= serial only with the quiet U-Boot, so nothing on
+  # screen); after a failed boot it switches to its graphical terminal so the menu is visible.
+  echo "if [ \"\${recordfail}\" = 1 ]; then"
+  echo "  set omarchy_splash="
+  echo "  if loadfont unicode; then set gfxmode=auto; load_video; insmod gfxterm; terminal_output gfxterm; fi"
+  echo "else"
+  echo "  set omarchy_splash=\"$splash_args\""
+  echo "fi"
   echo 'export omarchy_splash'
   echo 'EOF'
 } > /etc/grub.d/05_omarchy_splash
@@ -88,13 +95,21 @@ chmod 755 /etc/grub.d/05_omarchy_splash
 if ! grep -q 'omarchy_splash' /etc/default/grub; then
   sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 \\$omarchy_splash"/' /etc/default/grub
 fi
-# Normal boots: no GRUB menu (Esc/Shift still shows it) and no "Loading Linux ..." lines. After a
-# failed boot the recordfail branch of GRUB's timeout code still shows the menu for 5 s.
-if grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub; then
-  sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub
-else
-  echo 'GRUB_TIMEOUT_STYLE=hidden' >> /etc/default/grub
-fi
+# Normal boots: no GRUB menu, no wait, and GRUB draws nothing (text terminal = firmware console,
+# not its graphical terminal + Debian background). After a failed boot the recordfail branch of
+# GRUB's timeout code shows the menu for 5 s (graphical, see 05_omarchy_splash).
+# To see the menu + log on purpose: sudo omarchy-boot-verbose-next, then reboot.
+set_grub() {
+  if grep -q "^$1=" /etc/default/grub; then
+    sed -i "s|^$1=.*|$1=$2|" /etc/default/grub
+  else
+    echo "$1=$2" >> /etc/default/grub
+  fi
+}
+set_grub GRUB_TIMEOUT 0
+set_grub GRUB_TIMEOUT_STYLE hidden
+set_grub GRUB_TERMINAL_OUTPUT console
+install -m 755 "$OM/debian/bin/omarchy-boot-verbose-next" /usr/local/sbin/omarchy-boot-verbose-next
 # Debian hardcodes quiet_boot=0 in this conffile (Ubuntu sets 1); a grub upgrade may ask about it.
 sed -i 's/^quiet_boot="0"/quiet_boot="1"/' /etc/grub.d/10_linux
 

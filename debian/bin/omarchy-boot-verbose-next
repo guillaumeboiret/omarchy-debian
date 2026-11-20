@@ -1,0 +1,11 @@
+#!/bin/bash
+# Debian port: make the NEXT boot verbose (GRUB menu for 5 s + full text log, no splash), exactly
+# like the boot after a failure. Uses GRUB's recordfail flag, which is cleared again once that boot
+# succeeds (grub-common.service). Run with sudo.
+set -euo pipefail
+if (( EUID != 0 )); then
+  echo "run with sudo: sudo omarchy-boot-verbose-next"
+  exit 1
+fi
+grub-editenv /boot/grub/grubenv set recordfail=1
+echo "Next boot will show the GRUB menu and the boot log."
