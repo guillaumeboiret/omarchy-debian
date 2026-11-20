@@ -113,4 +113,9 @@ fi
 sed -i -e 's/^FONTFACE=.*/FONTFACE="Terminus"/' -e 's/^FONTSIZE=.*/FONTSIZE="16x32"/' /etc/default/console-setup
 setupcon --save-only 2>/dev/null || true
 
+# 20. Boot menu: start the default entry after 2 s (also after an unclean shutdown, normally 30 s)
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2/' /etc/default/grub
+grep -q '^GRUB_RECORDFAIL_TIMEOUT=' /etc/default/grub || echo 'GRUB_RECORDFAIL_TIMEOUT=2' >> /etc/default/grub
+update-grub
+
 echo "System part done."
