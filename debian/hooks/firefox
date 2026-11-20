@@ -156,7 +156,9 @@ menupopup, panel { --panel-shadow: none !important; }
 #TabsToolbar-customization-target { padding-inline-start: 10px !important; }
 
 /* Address bar */
-#urlbar[focused] > #urlbar-background, #searchbar:focus-within {
+/* One accent frame only: Firefox's own focus ring (--smartbar-outline-color) draws it,
+   so the background box gets no second outline */
+#searchbar:focus-within {
   outline: 1px solid var(--om-accent) !important;
   outline-offset: 0 !important;
 }
@@ -167,8 +169,7 @@ menupopup, panel { --panel-shadow: none !important; }
 #urlbar[focused] #urlbar-background, #urlbar[open] #urlbar-background,
 .urlbar[focused] .urlbar-background, .urlbar[open] .urlbar-background {
   background-color: var(--om-bg-darker) !important;
-  outline: 1px solid var(--om-accent) !important;
-  outline-offset: 0 !important;
+  outline: none !important;
   box-shadow: none !important;
 }
 .urlbarView, .search-panel-tree, .urlbarView-results { background: transparent !important; color: var(--om-fg) !important; }
