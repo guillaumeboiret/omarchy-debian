@@ -132,3 +132,17 @@ systemctl --user mask mako.service hypridle.service   # Debian enables both glob
 # 15. Input method: Omarchy's fcitx5 environment (installed system-wide on Arch)
 mkdir -p "$HOME/.config/environment.d"
 cp "$OM/default/environment.d/10-omarchy-fcitx.conf" "$HOME/.config/environment.d/"
+
+# 16. macOS cursors (github.com/ful1e5/apple_cursor), set for GTK/Firefox (gsettings), Xwayland/old
+#     apps (~/.icons/default) and Hyprland/Qt (XCURSOR_* + setcursor in ~/.config/hypr/looknfeel.lua)
+if [[ ! -d $HOME/.local/share/icons/macOS ]]; then
+  tmp=$(mktemp -d)
+  curl -fsSL -o "$tmp/macOS.tar.xz" https://github.com/ful1e5/apple_cursor/releases/latest/download/macOS.tar.xz
+  mkdir -p "$HOME/.local/share/icons"
+  tar -xJf "$tmp/macOS.tar.xz" -C "$HOME/.local/share/icons" macOS
+  rm -rf "$tmp"
+fi
+mkdir -p "$HOME/.icons/default"
+printf '[Icon Theme]\nInherits=macOS\n' >"$HOME/.icons/default/index.theme"
+gsettings set org.gnome.desktop.interface cursor-theme macOS
+gsettings set org.gnome.desktop.interface cursor-size 24
