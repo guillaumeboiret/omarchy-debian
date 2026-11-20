@@ -134,4 +134,7 @@ udevadm trigger --action=change --sysname-match=uinput
 printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' > /etc/systemd/logind.conf.d/30-omarchy-lid.conf
 systemctl kill -s HUP systemd-logind
 
+# 23. Omarchy login screen (SDDM, replaces GDM) + Omarchy boot progress bar (Plymouth, normal boots only)
+bash "$OM/debian/login-setup.sh"
+
 echo "System part done."
