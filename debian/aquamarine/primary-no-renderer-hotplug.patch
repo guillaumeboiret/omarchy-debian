@@ -1,0 +1,29 @@
+Description: Don't drop hotplugged outputs when the primary KMS device has no renderer
+ On split display/render SoCs (Apple Silicon: "apple" KMS device + separate
+ "asahi" render-only GPU) no EGL device matches the KMS fd, so initMgpu()
+ always fails. Startup tolerates this (backend not ready yet), but after a
+ hotplug SDRMConnector::connect() bailed out and the monitor never appeared.
+ The primary backend doesn't need the mgpu renderer (it only gathers GL
+ formats), so treat the failure as non-fatal and stop retrying on every commit.
+Author: Omarchy Debian port
+Forwarded: no
+--- a/src/backend/drm/DRM.cpp	2026-11-20 12:31:50.512638560 +0100
++++ b/src/backend/drm/DRM.cpp	2026-11-20 12:31:50.524440733 +0100
+@@ -641,7 +641,16 @@
+         if (rendererState.renderer && rendererState.allocator)
+             return true;
+ 
+-        return initMgpu();
++        // primary device without a usable renderer (e.g. Apple display controller):
++        // not fatal, and don't retry on every commit.
++        static std::unordered_set<const void*> noRenderer;
++        if (noRenderer.contains(this))
++            return true;
++        if (!initMgpu()) {
++            backend->log(AQ_LOG_ERROR, std::format("drm: no renderer for primary {}, continuing without it", gpu->path));
++            noRenderer.insert(this);
++        }
++        return true;
+     }
+ 
+     const bool hasEnabledOutputs =
