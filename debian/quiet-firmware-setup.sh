@@ -5,7 +5,12 @@
 # mount the EFI partition and copy m1n1/boot.bin.pre-quiet over m1n1/boot.bin.
 # To undo from Linux: sudo rm /etc/default/update-m1n1 && sudo update-m1n1
 set -euo pipefail
-OM=/home/guillaume/.local/share/omarchy
+# The user this machine is set up for (the one who ran sudo) and the port checkout this script lives in.
+# pwd -P resolves the /usr/share/omarchy symlink, so OM is always the real checkout.
+TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || true)}
+[[ -n $TARGET_USER && $TARGET_USER != "root" ]] || { echo "run with sudo from your own account"; exit 1; }
+USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+OM=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 [[ $EUID == 0 ]] || { echo "run with sudo"; exit 1; }
 
 install -m 755 "$OM/debian/bin/omarchy-quiet-uboot" /usr/local/sbin/omarchy-quiet-uboot

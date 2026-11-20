@@ -6,7 +6,12 @@
 #   sudo systemctl disable sddm && sudo systemctl enable gdm3 && sudo reboot
 #   (on Debian: sudo dpkg-reconfigure gdm3 to pick gdm3 as the default display manager)
 set -euo pipefail
-OM=/home/guillaume/.local/share/omarchy
+# The user this machine is set up for (the one who ran sudo) and the port checkout this script lives in.
+# pwd -P resolves the /usr/share/omarchy symlink, so OM is always the real checkout.
+TARGET_USER=${SUDO_USER:-$(logname 2>/dev/null || true)}
+[[ -n $TARGET_USER && $TARGET_USER != "root" ]] || { echo "run with sudo from your own account"; exit 1; }
+USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+OM=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 [ "$EUID" -eq 0 ] || { echo "run with sudo"; exit 1; }
 
 # --- Login screen -----------------------------------------------------------------------------
@@ -28,7 +33,7 @@ printf '[Users]\nRememberLastUser=true\nRememberLastSession=true\n' > /etc/sddm.
 
 # The theme draws in JetBrainsMono Nerd Font; the user's copy in ~/.local is unreadable to sddm.
 install -d -m 755 /usr/local/share/fonts/omarchy
-install -m 644 /home/guillaume/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf /usr/local/share/fonts/omarchy/
+install -m 644 "$USER_HOME/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf" /usr/local/share/fonts/omarchy/
 fc-cache -f /usr/local/share/fonts/omarchy >/dev/null
 
 # Unlock the GNOME login keyring with the login password. Upstream (install/login/sddm.sh) DELETES
@@ -44,7 +49,7 @@ fi
 
 # Preselect the Omarchy (uwsm) session (the theme also picks the uwsm session itself).
 install -d -m 755 -o sddm -g sddm /var/lib/sddm 2>/dev/null || install -d -m 755 /var/lib/sddm
-printf '[Last]\nSession=/usr/share/wayland-sessions/omarchy.desktop\nUser=guillaume\n' > /var/lib/sddm/state.conf
+printf '[Last]\nSession=/usr/share/wayland-sessions/omarchy.desktop\nUser=%s\n' "$TARGET_USER" > /var/lib/sddm/state.conf
 chown sddm:sddm /var/lib/sddm/state.conf 2>/dev/null || true
 
 # Switch display manager GDM -> SDDM (takes effect at next boot; GDM stays installed).
