@@ -134,7 +134,19 @@ menupopup, panel { --panel-shadow: none !important; }
   outline: 1px solid var(--om-accent) !important;
   outline-offset: 0 !important;
 }
-#urlbar-background { border: 1px solid var(--om-bg-darker) !important; }
+#urlbar-background, .urlbar-background {
+  background-color: var(--om-bg-dark) !important;
+  border: 1px solid var(--om-bg-darker) !important;
+}
+#urlbar[focused] #urlbar-background, #urlbar[open] #urlbar-background,
+.urlbar[focused] .urlbar-background, .urlbar[open] .urlbar-background {
+  background-color: var(--om-bg-darker) !important;
+  outline: 1px solid var(--om-accent) !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+.urlbarView, .search-panel-tree, .urlbarView-results { background: transparent !important; color: var(--om-fg) !important; }
+#urlbar-searchmode-switcher, .searchmode-switcher { background-color: var(--om-bg-light) !important; }
 .urlbarView-row[selected] { background: var(--om-sel) !important; }
 .urlbarView-url, .urlbarView-action { color: var(--om-accent) !important; }
 
