@@ -153,4 +153,21 @@ if ! grep -qE "^127\.0\.1\.1[[:space:]].*\b$host\b" /etc/hosts; then
   fi
 fi
 
+# 25. Memory pressure, as omarchy-settings ships it on Arch: swap on zram sized to RAM (zstd), reclaim
+#     tuned for zram, and systemd-oomd killing only user apps (app.slice) so the compositor survives.
+#     Without these, Debian's 4 GiB zram default fills, the kernel OOM killer fires too late, and
+#     Hyprland aborts when the GPU (shared RAM on Apple Silicon) can't allocate buffers.
+#     Debian's kernel already leaves zswap off, so Omarchy's zswap tmpfiles rule isn't needed.
+apt-get install -y systemd-oomd
+install -Dm644 "$OM/default/systemd/zram-generator.conf.d/90-omarchy.conf" /etc/systemd/zram-generator.conf.d/90-omarchy.conf
+install -Dm644 "$OM/etc/sysctl.d/99-omarchy-sysctl.conf" /etc/sysctl.d/99-omarchy-sysctl.conf
+install -Dm644 "$OM/etc/systemd/oomd.conf.d/10-omarchy.conf" /etc/systemd/oomd.conf.d/10-omarchy.conf
+install -Dm644 "$OM/default/systemd/user/app.slice.d/10-oomd.conf" /usr/lib/systemd/user/app.slice.d/10-oomd.conf
+sysctl --system >/dev/null
+systemctl daemon-reload
+# The new zram size applies at next boot: resizing a live device first swaps everything back into RAM.
+systemctl enable --now systemd-oomd
+systemctl restart systemd-oomd
+systemctl --machine="$TARGET_USER@" --user daemon-reload
+
 echo "System part done."
