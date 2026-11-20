@@ -21,6 +21,14 @@ fi
 
 # Avoid running screensaver when locked
 screensaver='[/]usr/lib/omarchy-screensaver/omarchy-screensaver'
+# Debian port: keep the screensaver up until the compositor confirms the lock covers every output
+# ("secure"), or closing it first shows the desktop for a moment. Gives up after 3 s.
+if pgrep -f "$screensaver" >/dev/null; then
+  for ((i = 0; i < 60; i++)); do
+    [[ $(omarchy-shell lock status 2>/dev/null) == *'"secure":true'* ]] && break
+    sleep 0.05
+  done
+fi
 if pkill -f "$screensaver" 2>/dev/null; then
   timeout 1s pidwait -f "$screensaver" 2>/dev/null || pkill -KILL -f "$screensaver" 2>/dev/null || true
   # It hid the cursor, and a killed or failed exit leaves it hidden.
