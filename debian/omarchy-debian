@@ -253,7 +253,13 @@ backup_port() {
   [[ $remote_tip == "$(git rev-parse HEAD)" ]] && return 0
   if git merge-base --is-ancestor "$remote_tip" "$before" || git merge-base --is-ancestor "$remote_tip" HEAD; then
     say "Backing up the port to GitHub"
-    git push -q --force-with-lease="debian-port:$remote_tip" backup HEAD:debian-port || warn "GitHub backup push failed"
+    # A lease can be refused as "stale info" when GitHub's view lags the fetch just made —
+    # re-fetch and try once more, still only overwriting the tip we checked above.
+    git push -q --force-with-lease="debian-port:$remote_tip" backup HEAD:debian-port 2>/dev/null || {
+      sleep 3
+      git fetch -q backup debian-port 2>/dev/null && [[ $(git rev-parse FETCH_HEAD) == "$remote_tip" ]] &&
+        git push -q --force-with-lease="debian-port:$remote_tip" backup HEAD:debian-port
+    } || warn "GitHub backup push failed — ask Claude to push the port"
   else
     warn "the GitHub backup has commits that aren't here — not overwritten. Ask Claude to sort it out."
   fi
