@@ -39,7 +39,9 @@ BarWidget {
   readonly property var sectionShown: trayContent.item ? trayContent.item.sectionShown : null
   readonly property int sectionCount: bar && bar.layoutConfig && Array.isArray(bar.layoutConfig.tray) ? bar.layoutConfig.tray.length : 0
   readonly property real sectionExtent: sectionHost ? (vertical ? sectionHost.implicitHeight : sectionHost.implicitWidth) : 0
-  readonly property bool hasDrawer: allItems.length > 0 || sectionCount > 0 || barDragging
+  // Debian port (local choice): no chevron when every tray icon is pinned — it only appears
+  // when something actually sits in the drawer. Upstream shows it whenever any icon exists.
+  readonly property bool hasDrawer: drawerCount > 0 || sectionCount > 0 || barDragging
   readonly property int drawerExtent: drawerCount * trayItemExtent + Math.max(0, drawerCount - 1) * trayItemGap + sectionExtent
   // A widget being dragged along the bar opens the drawer, to show where it
   // can go, and so does any panel open from the tray or the tray section.
