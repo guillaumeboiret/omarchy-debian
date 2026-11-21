@@ -51,6 +51,7 @@ Item {
     root.opened = false
     root.pendingRun = false
     phaseTimer.stop()
+    settleTimer.stop()
     // Clear the phase before killing the process: onExited advances to the
     // upload phase when it still reads "down".
     root.phase = ""
@@ -88,6 +89,7 @@ Item {
       if (expectedStop) pendingRun = true
       return
     }
+    settleTimer.stop()
     error = ""
     downloadMbps = ""
     uploadMbps = ""
@@ -119,7 +121,7 @@ Item {
 
   function finishPhase() {
     if (phase === "down") {
-      startPhase("up")
+      settleTimer.restart()
       return
     }
 
@@ -161,6 +163,17 @@ Item {
       root.expectedStop = false
       root.finishPhase()
     }
+  }
+
+  // The download leaves data queued in the router for a moment after the
+  // client exits; upload connections opened straight away stall behind it
+  // and run out of warm-up ("speed test connection timed out"). Measured
+  // on a Livebox: 0 s gap failed 3/3, 1 s passed 4/4.
+  Timer {
+    id: settleTimer
+    interval: 1500
+    repeat: false
+    onTriggered: if (root.running && root.phase === "down") root.startPhase("up")
   }
 
   Timer {
