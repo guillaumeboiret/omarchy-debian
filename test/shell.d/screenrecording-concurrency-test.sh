@@ -49,6 +49,11 @@ case $1 in
   unload-module) rm -f "$TEST_STATE/module-$2" ;;
 esac
 SH
+cat >"$tmp/bin/pw-loopback" <<'SH'
+#!/bin/bash
+trap 'exit 0' TERM
+while true; do /usr/bin/sleep 0.05; done
+SH
 # The contended invocations wait 1s for the lock before deciding a start
 # is in progress; the starts under test are gated, so 0.2s decides the same.
 cat >"$tmp/bin/flock" <<'SH'

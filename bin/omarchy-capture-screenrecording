@@ -52,6 +52,8 @@ REGION_FILE="$RUNTIME_DIR/omarchy-screenrecord-region"
 REC_PID_FILE="$RUNTIME_DIR/omarchy-screenrecord-pid"
 # The PulseAudio module ids of a combined-audio null sink, for cleanup.
 PA_MODULES_FILE="$RUNTIME_DIR/omarchy-screenrecord-pa-modules"
+# The pid of the pw-loopback that feeds the microphone into that null sink.
+PW_LOOPBACK_PID_FILE="$RUNTIME_DIR/omarchy-screenrecord-pw-loopback"
 # Present while a start holds the lock; another toggle or stop then leaves
 # CANCEL_FILE for that start instead of queueing behind its picker or recorder.
 STARTING_FILE="$RUNTIME_DIR/omarchy-screenrecord-starting"
@@ -234,9 +236,17 @@ wf_audio_device() {
       else
         sink=""
       fi
-      if m=$(pactl load-module module-loopback source="$source" sink=omarchy_screenrec latency_msec=20 2>/dev/null); then
-        echo "$m" >>"$PA_MODULES_FILE"
-      else
+      # The mic goes through a native pw-loopback, not module-loopback: on Asahi
+      # the default source is a filter-chain remap (omarchy_asahi_mic), and a
+      # module-loopback fed from it links but carries only silence into the sink.
+      setsid pw-loopback -n omarchy_screenrec_mic \
+        --capture-props="target.object=$source node.passive=false" \
+        --playback-props="target.object=omarchy_screenrec node.dont-reconnect=true" \
+        </dev/null >/dev/null 2>&1 9>&- &
+      echo "$!" >"$PW_LOOPBACK_PID_FILE"
+      sleep 0.3
+      if ! kill -0 "$(<"$PW_LOOPBACK_PID_FILE")" 2>/dev/null; then
+        rm -f "$PW_LOOPBACK_PID_FILE"
         source=""
       fi
       if [[ -n $sink && -n $source ]]; then
@@ -264,6 +274,13 @@ wf_audio_unavailable() {
 }
 
 wf_audio_cleanup() {
+  if [[ -f $PW_LOOPBACK_PID_FILE ]]; then
+    local pid
+    pid=$(<"$PW_LOOPBACK_PID_FILE")
+    # Only signal the pid if it is still our pw-loopback, not a reused pid.
+    [[ $pid =~ ^[0-9]+$ && $(<"/proc/$pid/comm") == "pw-loopback" ]] 2>/dev/null && kill "$pid" 2>/dev/null
+    rm -f "$PW_LOOPBACK_PID_FILE"
+  fi
   [[ -f $PA_MODULES_FILE ]] || return
   # Unload in reverse so the loopbacks drop before the null sink they feed.
   tac "$PA_MODULES_FILE" 2>/dev/null | while read -r m; do
