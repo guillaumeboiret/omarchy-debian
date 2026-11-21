@@ -23,7 +23,7 @@ zed                        flatpak:dev.zed.Zed=zeditor
 emacs-wayland              apt:emacs-pgtk
 
 # Terminals
-ghostty                    none:Ghostty isn't packaged for Debian 13 ARM64 (Alacritty, Kitty and Foot are)
+ghostty                    app:ghostty
 
 # Apps
 signal-desktop             flatpak:org.signal.Signal=signal-desktop

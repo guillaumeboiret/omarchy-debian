@@ -8,11 +8,15 @@ export PATH="$OMARCHY_PATH/bin:$OM/debian/bin:$PATH"
 mkdir -p "$BK"
 
 # 1. Configs from Omarchy's config/ (what Arch puts in /etc/skel). Replace + back up these:
-for d in hypr kitty alacritty btop foot ghostty lazygit tmux starship.toml omarchy xdg-desktop-portal hyprland-mimeapps.list chromium-flags.conf; do
+for d in hypr btop ghostty lazygit tmux starship.toml omarchy xdg-desktop-portal hyprland-mimeapps.list chromium-flags.conf; do
   [ -e "$OM/config/$d" ] || continue
   if [ -e "$HOME/.config/$d" ]; then mv "$HOME/.config/$d" "$BK/"; fi
   cp -a "$OM/config/$d" "$HOME/.config/$d"
 done
+# Terminal: Ghostty (built by omarchy-debian), GNOME Terminal as the fallback
+printf '%s\n' '# Terminal emulator preference order for xdg-terminal-exec' \
+  '# The first found and valid terminal will be used' \
+  com.mitchellh.ghostty.desktop org.gnome.Terminal.desktop > "$HOME/.config/xdg-terminals.list"
 # git aliases only if the user has no git config of their own there
 [ -e "$HOME/.config/git/config" ] || { mkdir -p "$HOME/.config/git"; cp "$OM/config/git/config" "$HOME/.config/git/config"; }
 

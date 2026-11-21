@@ -36,7 +36,8 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
   libkf6colorscheme-dev libkf6config-dev libkf6iconthemes-dev libarchive-dev libpoppler-qt6-dev libqpdf-dev \
   libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
   libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev \
-  qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi gawk
+  qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi gawk \
+  libonig-dev  # Ghostty (system oniguruma; GTK4/libadwaita/gtk4-layer-shell dev files come with the shell's)
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then
@@ -239,5 +240,10 @@ if ! cmp -s "$OM/bin/omarchy-sudo-passwordless" /usr/bin/omarchy-sudo-passwordle
   install -o root -g root -m 0755 "$OM/bin/omarchy-security-functions" "$OM/bin/omarchy-sudo-passwordless" /usr/bin/
 fi
 install -o root -g root -m 0644 "$OM/etc/tmpfiles.d/omarchy-nopasswd-sudo.conf" /etc/tmpfiles.d/
+
+# 30. Ghostty (built by omarchy-debian) is the terminal, GNOME Terminal the fallback. The other
+#     terminals go: foot and xterm (gnome-terminal still provides x-terminal-emulator for xorg/xinit
+#     and xdg-terminal-exec). foot-terminfo stays, ncurses-term depends on it.
+apt-get purge -y foot xterm
 
 echo "System part done."
