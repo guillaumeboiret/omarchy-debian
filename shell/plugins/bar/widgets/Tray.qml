@@ -841,8 +841,11 @@ BarWidget {
     // in the theme's warning colour and pulses, so "stopped recording, text not
     // typed yet" reads differently from idle at bar size.
     property bool busy: false
+    // Debian port (local choice): an idle item (Voxtype ready) is painted in the
+    // bar's foreground like the other bar icons; only recording keeps its colour.
+    property bool plain: false
     readonly property bool symbolic: root.iconIsSymbolic(icon)
-    readonly property bool tinted: symbolic || busy
+    readonly property bool tinted: symbolic || busy || plain
 
     SequentialAnimation on opacity {
       running: trayIconRoot.busy
@@ -917,6 +920,8 @@ BarWidget {
       icon: trayItemRoot.modelData.icon
       busy: trayItemRoot.modelData.id === "voxtype"
         && String(trayItemRoot.modelData.tooltipTitle || "").indexOf("Transcribing") !== -1
+      plain: trayItemRoot.modelData.id === "voxtype"
+        && String(trayItemRoot.modelData.tooltipTitle || "").indexOf("Ready") !== -1
     }
 
     MouseArea {
