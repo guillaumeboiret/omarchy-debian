@@ -4,46 +4,36 @@ set -euo pipefail
 
 source "$(dirname "$0")/base-test.sh"
 
-# wf-recorder takes one audio device, so desktop and microphone audio together
-# go through a throwaway null sink. A source whose loopback won't load is left
-# out with a notification naming it, never recorded as silence.
+# wf-recorder takes one audio device. With desktop and microphone audio both
+# requested, wf-recorder records desktop audio and the microphone records to a
+# track of its own, mixed in when the recording is finalized. A source that
+# can't be recorded is left out with a notification naming it.
 tmp=$(mktemp -d)
-trap '[[ -s $tmp/loopback ]] && kill "$(<"$tmp/loopback")" 2>/dev/null; rm -rf "$tmp"' EXIT
+trap '[[ -s $tmp/state ]] && kill "$(head -1 "$tmp/state")" 2>/dev/null; rm -rf "$tmp"' EXIT
 
 awk '
-  /^(wf_audio_device|wf_audio_unavailable|wf_audio_cleanup)\(\) \{/ { copying = 1 }
+  /^(wf_audio_device|start_mic_track|wf_audio_unavailable|wf_audio_cleanup)\(\) \{/ { copying = 1 }
   copying { print }
   /^}/ { copying = 0 }
 ' "$ROOT/bin/omarchy-capture-screenrecording" >"$tmp/functions"
 
 mkdir -p "$tmp/bin"
-# Modules number from 10 up; a load fails when its arguments name a source
-# listed in $tmp/refuse. With no default source pactl names its placeholder.
 cat >"$tmp/bin/pactl" <<'SH'
 #!/bin/bash
 echo "pactl $*" >>"$TMP/calls"
 case $1 in
   get-default-sink) [[ -e $TMP/no-sink ]] || echo speakers ;;
   get-default-source) if [[ -e $TMP/no-source ]]; then echo @DEFAULT_SOURCE@; else echo mic; fi ;;
-  load-module)
-    for refused in $(cat "$TMP/refuse" 2>/dev/null); do
-      [[ " $* " != *" $refused "* ]] || exit 1
-    done
-    n=$(( $(cat "$TMP/next" 2>/dev/null || echo 10) ))
-    echo $(( n + 1 )) >"$TMP/next"
-    echo "$n"
-    ;;
 esac
 SH
-# The microphone joins the null sink through pw-loopback, which exits at once
-# when its capture target is listed in $tmp/refuse.
-cat >"$tmp/bin/pw-loopback" <<'SH'
+# pw-record exits at once when $TMP/refuse exists; otherwise it writes its file
+# and records until interrupted.
+cat >"$tmp/bin/pw-record" <<'SH'
 #!/bin/bash
-echo "pw-loopback $*" >>"$TMP/calls"
-for refused in $(cat "$TMP/refuse" 2>/dev/null); do
-  [[ " $* " != *" $refused "* ]] || exit 1
-done
-trap 'exit 0' TERM
+echo "pw-record $*" >>"$TMP/calls"
+[[ ! -e $TMP/refuse ]] || exit 1
+touch "${@: -1}"
+trap 'echo stopped >>"$TMP/calls"; exit 0' INT TERM
 while true; do sleep 0.05; done
 SH
 cat >"$tmp/bin/omarchy-notification-send" <<'SH'
@@ -53,62 +43,24 @@ echo "noise on stdout"
 SH
 chmod +x "$tmp/bin"/*
 
+run() {
+  TMP=$tmp PATH="$tmp/bin:$PATH" DESKTOP_AUDIO=${DESKTOP_AUDIO:-true} MICROPHONE_AUDIO=${MICROPHONE_AUDIO:-true} \
+    MIC_STATE_FILE=$tmp/state bash -c "source \"\$TMP/functions\"; $1"
+}
+
 device() {
-  [[ -s $tmp/loopback ]] && kill "$(<"$tmp/loopback")" 2>/dev/null
-  rm -f "$tmp/calls" "$tmp/notes" "$tmp/next" "$tmp/modules" "$tmp/loopback"
-  TMP=$tmp PATH="$tmp/bin:$PATH" DESKTOP_AUDIO=$1 MICROPHONE_AUDIO=$2 PA_MODULES_FILE=$tmp/modules PW_LOOPBACK_PID_FILE=$tmp/loopback \
-    bash -c 'source "$TMP/functions"; wf_audio_device' >"$tmp/out"
+  rm -f "$tmp/calls" "$tmp/notes"
+  DESKTOP_AUDIO=$1 MICROPHONE_AUDIO=$2 run wf_audio_device >"$tmp/out"
 }
 
-loaded() {
-  grep -c 'load-module' "$tmp/calls" || true
-}
-
-unloaded() {
-  grep 'unload-module' "$tmp/calls" | awk '{ print $3 }' | tr '\n' ' '
-}
-
-: >"$tmp/refuse"
 device true true
-[[ $(cat "$tmp/out") == omarchy_screenrec.monitor ]] || fail "both sources record through the null sink" "$(cat "$tmp/out")"
-[[ $(cat "$tmp/modules") == $'10\n11' ]] || fail "both module ids are kept for stop" "$(cat "$tmp/modules")"
-grep -q 'pw-loopback .*target.object=mic ' "$tmp/calls" && kill -0 "$(<"$tmp/loopback")" ||
-  fail "the microphone feeds the null sink through a running pw-loopback" "$(cat "$tmp/calls")"
-[[ ! -e $tmp/notes ]] || fail "a full mix notifies nothing" "$(cat "$tmp/notes")"
-pass "desktop and microphone audio record together through the null sink"
+[[ $(cat "$tmp/out") == $'speakers.monitor\nmic' ]] || fail "both sources: desktop to wf-recorder, microphone to its own track" "$(cat "$tmp/out")"
+[[ ! -e $tmp/notes ]] && ! grep -q load-module "$tmp/calls" || fail "a full mix notifies and loads nothing" "$(cat "$tmp/calls")"
+pass "desktop audio goes to wf-recorder and the microphone to a separate track"
 
-echo "--capture-props=target.object=mic" >"$tmp/refuse"
-device true true
-[[ $(cat "$tmp/out") == speakers.monitor ]] || fail "a microphone that won't mix leaves desktop audio" "$(cat "$tmp/out")"
-[[ $(unloaded) == "11 10 " && ! -e $tmp/modules ]] || fail "the modules that loaded are unloaded" "$(cat "$tmp/calls")"
-grep -q 'notify .*microphone audio' "$tmp/notes" && ! grep -q 'desktop' "$tmp/notes" ||
-  fail "the dropped microphone is named" "$(cat "$tmp/notes" 2>/dev/null)"
-pass "a microphone that won't mix is dropped, named, and desktop audio records alone"
-
-echo "source=speakers.monitor" >"$tmp/refuse"
-device true true
-[[ $(cat "$tmp/out") == mic ]] || fail "desktop audio that won't mix leaves the microphone" "$(cat "$tmp/out")"
-[[ $(unloaded) == "10 " ]] || fail "the modules that loaded are unloaded" "$(cat "$tmp/calls")"
-grep -q 'notify .*desktop audio' "$tmp/notes" && ! grep -q 'microphone' "$tmp/notes" ||
-  fail "the dropped desktop audio is named" "$(cat "$tmp/notes" 2>/dev/null)"
-pass "desktop audio that won't mix is dropped, named, and the microphone records alone"
-
-echo "source=speakers.monitor --capture-props=target.object=mic" >"$tmp/refuse"
-device true true
-[[ ! -s $tmp/out ]] || fail "with neither source there is no audio device" "$(cat "$tmp/out")"
-[[ $(grep -c '^notify' "$tmp/notes") == 2 ]] || fail "both dropped sources are named" "$(cat "$tmp/notes")"
-pass "with neither loopback the recording has no audio track rather than a silent one, and says so"
-
-echo "module-null-sink" >"$tmp/refuse"
-device true true
-[[ $(cat "$tmp/out") == speakers.monitor && $(loaded) == 1 ]] || fail "without the null sink desktop audio records alone" "$(cat "$tmp/out")"
-grep -q 'notify .*microphone audio' "$tmp/notes" || fail "without the null sink the microphone is named" "$(cat "$tmp/notes" 2>/dev/null)"
-pass "without the null sink, desktop audio records alone and the microphone is named"
-
-: >"$tmp/refuse"
 touch "$tmp/no-source"
 device true true
-[[ $(cat "$tmp/out") == speakers.monitor && $(loaded) == 0 ]] || fail "without a default source desktop audio records alone" "$(cat "$tmp/out")"
+[[ $(cat "$tmp/out") == speakers.monitor ]] || fail "without a default source desktop audio records alone" "$(cat "$tmp/out")"
 grep -q 'notify .*microphone audio' "$tmp/notes" || fail "a missing default source is named" "$(cat "$tmp/notes" 2>/dev/null)"
 device false true
 [[ ! -s $tmp/out ]] && grep -q 'notify .*microphone audio' "$tmp/notes" || fail "a microphone-only recording without a source says so" "$(cat "$tmp/out")"
@@ -122,3 +74,20 @@ device false true
 device false false
 [[ ! -s $tmp/out && ! -e $tmp/calls ]] || fail "no audio asks pactl nothing" "$(cat "$tmp/calls")"
 pass "a single source records directly and no audio asks for nothing"
+
+# A track that records is kept for finalizing on stop, and deleted on a cancel.
+rm -f "$tmp/calls"
+run "start_mic_track mic '$tmp/track.flac' && wf_audio_cleanup keep && echo \"\$MIC_TRACK\"" >"$tmp/out"
+[[ $(cat "$tmp/out") == "$tmp/track.flac" && -e $tmp/track.flac && ! -e $tmp/state ]] ||
+  fail "a stopped recording keeps its microphone track for finalizing" "$(cat "$tmp/out")"
+grep -q stopped "$tmp/calls" || fail "the microphone recorder is interrupted" "$(cat "$tmp/calls")"
+run "start_mic_track mic '$tmp/track.flac' && wf_audio_cleanup"
+[[ ! -e $tmp/track.flac && ! -e $tmp/state ]] || fail "a cancelled recording deletes its microphone track"
+pass "the microphone track is kept on stop and deleted on cancel"
+
+touch "$tmp/refuse"
+status=0
+run "start_mic_track mic '$tmp/track.flac'" || status=$?
+(( status == 1 )) && [[ ! -e $tmp/track.flac && ! -e $tmp/state ]] || fail "a microphone recorder that won't start leaves nothing"
+rm "$tmp/refuse"
+pass "a microphone recorder that won't start is reported and leaves nothing"

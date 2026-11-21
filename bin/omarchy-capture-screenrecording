@@ -50,10 +50,8 @@ RECORDING_FILE="$RUNTIME_DIR/omarchy-screenrecord-filename"
 REGION_FILE="$RUNTIME_DIR/omarchy-screenrecord-region"
 # The recorder's pid, so stop and status act on that process alone.
 REC_PID_FILE="$RUNTIME_DIR/omarchy-screenrecord-pid"
-# The PulseAudio module ids of a combined-audio null sink, for cleanup.
-PA_MODULES_FILE="$RUNTIME_DIR/omarchy-screenrecord-pa-modules"
-# The pid of the pw-loopback that feeds the microphone into that null sink.
-PW_LOOPBACK_PID_FILE="$RUNTIME_DIR/omarchy-screenrecord-pw-loopback"
+# The pid and file of the separate microphone track, mixed in when finalizing.
+MIC_STATE_FILE="$RUNTIME_DIR/omarchy-screenrecord-mic"
 # Present while a start holds the lock; another toggle or stop then leaves
 # CANCEL_FILE for that start instead of queueing behind its picker or recorder.
 STARTING_FILE="$RUNTIME_DIR/omarchy-screenrecord-starting"
@@ -217,47 +215,23 @@ recorder_backends() {
 
 # wf-recorder records a single audio device. Map the desktop/mic flags onto one:
 # desktop -> default sink monitor, mic -> default source. When both are requested,
-# route them through a throwaway null sink so a single track carries both; the
-# module ids are saved to PA_MODULES_FILE so stop can unload them. A requested
-# source that can't be recorded is left out with a notification naming it, and
-# the recording carries whichever source remains.
+# wf-recorder takes desktop audio and the microphone records to a track of its
+# own beside the video (start_mic_track), mixed in by finalize_recording. A live
+# mix through a null sink joins two hardware clocks on Apple Silicon (speakers
+# and the AOP microphone array) and records the microphone as a looping buzz.
+# Prints the device for wf-recorder, then the source for a separate microphone
+# track when there is one. A requested source that can't be recorded is left
+# out with a notification naming it, and the recording carries what remains.
 wf_audio_device() {
-  local sink="" source="" m
+  local sink="" source=""
   [[ $DESKTOP_AUDIO == "true" ]] && sink=$(pactl get-default-sink 2>/dev/null)
   [[ $MICROPHONE_AUDIO == "true" ]] && source=$(pactl get-default-source 2>/dev/null)
   # With no default source pactl answers its own placeholder, never nothing.
   [[ $source == "@DEFAULT_SOURCE@" ]] && source=""
 
   if [[ -n $sink && -n $source ]]; then
-    if m=$(pactl load-module module-null-sink sink_name=omarchy_screenrec sink_properties=device.description=omarchy_screenrec 2>/dev/null); then
-      echo "$m" >"$PA_MODULES_FILE"
-      if m=$(pactl load-module module-loopback source="${sink}.monitor" sink=omarchy_screenrec latency_msec=20 2>/dev/null); then
-        echo "$m" >>"$PA_MODULES_FILE"
-      else
-        sink=""
-      fi
-      # The mic goes through a native pw-loopback, not module-loopback: on Asahi
-      # the default source is a filter-chain remap (omarchy_asahi_mic), and a
-      # module-loopback fed from it links but carries only silence into the sink.
-      setsid pw-loopback -n omarchy_screenrec_mic \
-        --capture-props="target.object=$source node.passive=false" \
-        --playback-props="target.object=omarchy_screenrec node.dont-reconnect=true" \
-        </dev/null >/dev/null 2>&1 9>&- &
-      echo "$!" >"$PW_LOOPBACK_PID_FILE"
-      sleep 0.3
-      if ! kill -0 "$(<"$PW_LOOPBACK_PID_FILE")" 2>/dev/null; then
-        rm -f "$PW_LOOPBACK_PID_FILE"
-        source=""
-      fi
-      if [[ -n $sink && -n $source ]]; then
-        echo "omarchy_screenrec.monitor"
-        return
-      fi
-      wf_audio_cleanup
-    else
-      # No device to mix into: desktop audio records alone, as it always has.
-      source=""
-    fi
+    printf '%s\n%s\n' "${sink}.monitor" "$source"
+    return
   fi
 
   [[ $DESKTOP_AUDIO == "true" && -z $sink ]] && wf_audio_unavailable desktop
@@ -269,24 +243,45 @@ wf_audio_device() {
   fi
 }
 
+# Records the given source to its own file; its pid and path go to MIC_STATE_FILE.
+start_mic_track() {
+  local source=$1 file=$2 pid
+  pw-record --target "$source" --rate 48000 --channels 1 "$file" </dev/null >/dev/null 2>&1 9>&- &
+  pid=$!
+  sleep 0.2
+  if kill -0 "$pid" 2>/dev/null; then
+    printf '%s\n%s\n' "$pid" "$file" >"$MIC_STATE_FILE"
+    return 0
+  fi
+  rm -f "$file"
+  return 1
+}
+
 wf_audio_unavailable() {
   omarchy-notification-send -u critical -t 5000 "$(omarchy-i18n capture.recordingWithoutAudio "$1")" "$(omarchy-i18n capture.audioNotAdded "$1")" >/dev/null 2>&1
 }
 
+# Ends the microphone track. With "keep" its file is left for finalize_recording
+# in MIC_TRACK; otherwise, as for a cancelled or failed start, it is deleted.
 wf_audio_cleanup() {
-  if [[ -f $PW_LOOPBACK_PID_FILE ]]; then
-    local pid
-    pid=$(<"$PW_LOOPBACK_PID_FILE")
-    # Only signal the pid if it is still our pw-loopback, not a reused pid.
-    [[ $pid =~ ^[0-9]+$ && $(<"/proc/$pid/comm") == "pw-loopback" ]] 2>/dev/null && kill "$pid" 2>/dev/null
-    rm -f "$PW_LOOPBACK_PID_FILE"
+  [[ -f $MIC_STATE_FILE ]] || return 0
+  local pid="" file="" waited=0
+  { read -r pid; read -r file; } <"$MIC_STATE_FILE"
+  # Only signal the pid if it is still our pw-record, not a reused pid.
+  if [[ $pid =~ ^[0-9]+$ && $(<"/proc/$pid/comm") == "pw-record" ]] 2>/dev/null; then
+    # TERM, not INT: a background job of a non-interactive shell ignores SIGINT.
+    # pw-record closes its file cleanly on either.
+    kill -TERM "$pid" 2>/dev/null
+    while kill -0 "$pid" 2>/dev/null && ((waited++ < 20)); do
+      sleep 0.1
+    done
   fi
-  [[ -f $PA_MODULES_FILE ]] || return
-  # Unload in reverse so the loopbacks drop before the null sink they feed.
-  tac "$PA_MODULES_FILE" 2>/dev/null | while read -r m; do
-    [[ -n $m ]] && pactl unload-module "$m" 2>/dev/null
-  done
-  rm -f "$PA_MODULES_FILE"
+  if [[ ${1:-} == "keep" ]]; then
+    MIC_TRACK=$file
+  else
+    rm -f "$file"
+  fi
+  rm -f "$MIC_STATE_FILE"
 }
 
 # Launches wf-recorder for the given picker target, backgrounded, with REC_PID set.
@@ -308,9 +303,9 @@ launch_wf_recorder() {
     ;;
   esac
 
-  local audio_args=() dev
-  dev=$(wf_audio_device)
-  [[ -n $dev ]] && audio_args=(--audio="$dev")
+  local audio_args=() audio=()
+  mapfile -t audio < <(wf_audio_device)
+  [[ -n ${audio[0]:-} ]] && audio_args=(--audio="${audio[0]}")
 
   # -r 60 caps the framerate: capturing a 120 Hz panel at its native rate makes
   # needlessly large files. -R 48000 keeps the AAC track at 48 kHz rather than
@@ -320,6 +315,12 @@ launch_wf_recorder() {
   # still screen it would never exit and the stop would have to kill it.
   wf-recorder "${geom_args[@]}" -D -r 60 -R 48000 "${audio_args[@]}" -f "$filename" 9>&- 2>>"$LOG_FILE" &
   REC_PID=$!
+
+  # Started right after wf-recorder so both tracks begin within a few ms.
+  if [[ -n ${audio[1]:-} ]]; then
+    start_mic_track "${audio[1]}" "$(dirname "$filename")/.$(basename "${filename%.mp4}")-mic.flac" ||
+      wf_audio_unavailable microphone
+  fi
 }
 
 start_cancelled() {
@@ -469,7 +470,7 @@ stop_screenrecording() {
 
   toggle_screenrecording_indicator
   cleanup_webcam
-  wf_audio_cleanup
+  wf_audio_cleanup keep
 
   if omarchy-capture-screenrecording-process "${RECORDER[@]}"; then
     omarchy-capture-screenrecording-process "${RECORDER[@]}" --signal KILL
@@ -515,6 +516,7 @@ stop_screenrecording() {
     ) 9>&- &
   fi
 
+  [[ -n ${MIC_TRACK:-} ]] && rm -f "$MIC_TRACK"
   rm -f "$RECORDING_FILE" "$REC_PID_FILE"
 }
 
@@ -581,8 +583,13 @@ finalize_recording() {
     video_codec=(-c:v libx264 -preset veryfast -crf 20)
   fi
 
-  # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
-  local args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
+  # Trim the first frame, mix in a separate microphone track, and normalize audio
+  # to -14 LUFS if present, in a single pass
+  local args=(-y -ss 0.1 -i "$latest")
+  local mic=""
+  [[ -s ${MIC_TRACK:-} ]] && mic=$MIC_TRACK
+  [[ -n $mic ]] && args+=(-ss 0.1 -i "$mic")
+  args+=("${video_codec[@]}")
   if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
     # Hard-mute the first 400ms to drop the PipeWire capture-open pop (a near-clipping
     # transient around 130-200ms that a gentle fade-in can't attenuate enough), then a
@@ -590,7 +597,12 @@ finalize_recording() {
     #
     # loudnorm declares 192 kHz output, so without -ar the AAC encoder writes
     # 96 kHz from a 48 kHz recording.
-    args+=(-ar 48000 -af "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11")
+    local chain="volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11"
+    if [[ -n $mic ]]; then
+      args+=(-filter_complex "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[mic];[0:a][mic]amix=inputs=2:duration=first:normalize=0,$chain[a]" -map 0:v -map "[a]" -ar 48000)
+    else
+      args+=(-ar 48000 -af "$chain")
+    fi
   fi
 
   local processed="${latest%.mp4}-processed.mp4"
@@ -599,6 +611,7 @@ finalize_recording() {
   else
     rm -f "$processed"
   fi
+  [[ -n $mic ]] && rm -f "$mic"
 }
 
 mkdir -p "$RUNTIME_DIR" || exit 1
