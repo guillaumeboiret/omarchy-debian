@@ -32,6 +32,13 @@ else
   if [[ -n $shell_pid ]] && read -r stat 2>/dev/null <"/proc/$shell_pid/stat"; then
     read -r _ _ _ session tty_nr _ <<<"${stat##*) }"
     if (( session == shell_pid && tty_nr != 0 )); then
+      # Debian port: Ghostty starts the shell as `/bin/sh -c <shell>`. Arch's sh (bash) execs it,
+      # Debian's (dash) stays as its parent, and dash's cwd never follows `cd` → read the shell's.
+      if [[ $(readlink -f "/proc/$shell_pid/exe" 2>/dev/null) == */dash ]]; then
+        children=()
+        read -ra children 2>/dev/null <"/proc/$shell_pid/task/$shell_pid/children" || true
+        (( ${#children[@]} == 1 )) && shell_pid=${children[0]}
+      fi
       cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
       shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null)
       grep -Fqsx "$shell" /etc/shells || cwd=""

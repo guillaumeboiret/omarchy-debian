@@ -105,3 +105,22 @@ done
 cwd=$(PATH="$stub_bin:$PATH" XDG_RUNTIME_DIR="$test_tmp" HOME="$test_tmp" "$ROOT/bin/omarchy-cmd-terminal-cwd" "$files_pid" 2>&1)
 [[ $cwd == "$files_dir" ]] || fail "a terminal opened over Files starts in the folder it shows" "got: $cwd"
 pass "a terminal opened over Files starts in the folder it shows"
+
+# Debian port: Ghostty starts the shell as `/bin/sh -c <shell>`, and Debian's sh (dash) stays as
+# the shell's parent, in the directory the terminal opened in. The shell's own directory counts.
+if [[ -x /bin/dash ]]; then
+  ghostty_dir="$test_tmp/opened here"
+  mkdir -p "$ghostty_dir"
+  (cd "$ghostty_dir" && DIR="$work_dir" SHELL=/bin/dash exec script -qec '(cd "$DIR" && exec bash -c "sleep 30; :"); :' /dev/null) </dev/null >/dev/null 2>&1 &
+  ghostty_pid=$!
+  for _ in $(seq 100); do
+    dash_pid=$(cat /proc/"$ghostty_pid"/task/*/children 2>/dev/null | tr ' ' '\n' | sort -n | tail -n1)
+    [[ -n $dash_pid ]] && grep -qs . /proc/"$dash_pid"/task/"$dash_pid"/children && break
+    sleep 0.05
+  done
+  wait_for_shell "$dash_pid" "$work_dir"
+  cwd=$(PATH="$stub_bin:$PATH" XDG_RUNTIME_DIR="$test_tmp" HOME="$test_tmp" "$ROOT/bin/omarchy-cmd-terminal-cwd" "$ghostty_pid" 2>&1)
+  kill_tree "$ghostty_pid"
+  [[ $cwd == "$work_dir" ]] || fail "a shell started through dash opens in the shell's directory" "got: $cwd"
+  pass "a shell started through dash opens in the shell's directory"
+fi
