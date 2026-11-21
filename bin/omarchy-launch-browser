@@ -3,6 +3,16 @@
 # omarchy:summary=Launch the default browser as determined by xdg-settings.
 # omarchy:args=[url]
 
+# A link to a host listed in ~/.config/omarchy/webapp-links (one host per line)
+# opens in that site's web app window instead of the browser.
+webapp_links="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/webapp-links"
+if [[ -r $webapp_links && $# == 1 && $1 =~ ^https?://([^/:?#]+) ]]; then
+  if grep -qxF "${BASH_REMATCH[1]}" <(sed 's/#.*//; s/[[:space:]]//g' "$webapp_links"); then
+    omarchy-launch-webapp "$1"
+    exit
+  fi
+fi
+
 default_browser=$(omarchy-cmd-default-browser)
 
 # Read Exec= from the same data dirs omarchy-cmd-default-browser searched, in
