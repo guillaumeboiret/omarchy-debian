@@ -208,8 +208,11 @@ Item {
     rightLabel: I18n.t("speedtest.upload")
     runAgainTooltip: I18n.t("speedtest.measureAgainVia").arg("speed.omarchy.org")
     running: root.running
-    leftValue: root.downloadValue
-    rightValue: root.uploadValue
+    // Shown in megabytes per second (8 bits per byte, decimal MB).
+    unit: "MB/s"
+    scaleStops: [10, 25, 50, 100, 250, 500, 1000]
+    leftValue: root.downloadValue / 8
+    rightValue: root.uploadValue / 8
     leftLive: root.running && root.phase === "down"
     rightLive: root.running && root.phase === "up"
     error: root.error
