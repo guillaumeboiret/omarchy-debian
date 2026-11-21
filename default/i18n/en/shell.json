@@ -584,6 +584,7 @@
   "tailscale.authorizeToShowConnections": "Authorize Tailscale operator to show connections",
   "tailscale.authorizingOperator": "Authorizing Tailscale operator...",
   "tailscale.chooseMullvadRegion": "Choose Mullvad region",
+  "tailscale.clipboardSend": "Send my clipboard",
   "tailscale.commandFailed": "Tailscale command failed",
   "tailscale.connect": "Connect",
   "tailscale.connections": "CONNECTIONS",

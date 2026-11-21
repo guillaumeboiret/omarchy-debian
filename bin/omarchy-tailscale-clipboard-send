@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Copy this clipboard to the clipboard of a tailnet machine over ssh
+# omarchy:args=<machine>
+# omarchy:examples=omarchy tailscale clipboard send macbook
+
+set -euo pipefail
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  echo "Usage: omarchy-tailscale-clipboard-send <machine>"
+  exit 0
+fi
+
+if (($# != 1)); then
+  echo "Usage: omarchy-tailscale-clipboard-send <machine>" >&2
+  exit 1
+fi
+
+# ssh by the short name: MagicDNS resolves it, and it is the name a host key
+# was most likely first accepted under. The tailnet already authenticates the
+# peer, so a never-seen host is trusted on first use; a changed key still fails.
+name="${1%%.*}"
+
+fail() {
+  omarchy-notification-send -g "󰅍" -u critical "$(omarchy-i18n tailscale.clipboardSendFailed "$name")" "$1"
+  exit 1
+}
+
+types=$(wl-paste --list-types 2>/dev/null) || types=""
+
+if grep -qxE 'text/plain;charset=utf-8|text/plain|UTF8_STRING|TEXT|STRING' <<<"$types"; then
+  kind=text
+  mime=$(grep -m1 -xE 'text/plain;charset=utf-8|text/plain|UTF8_STRING|TEXT|STRING' <<<"$types")
+elif grep -qx 'image/png' <<<"$types"; then
+  kind=image
+  mime=image/png
+else
+  fail "$(omarchy-i18n tailscale.clipboardEmpty)"
+fi
+
+# Runs on the far side, under whatever login shell it has, so plain sh with
+# no single quotes. macOS: pbcopy for text, osascript for a PNG. Linux: the
+# user's Wayland socket (ssh sessions carry none), else X11 on :0.
+remote='kind=$1
+if command -v pbcopy >/dev/null 2>&1; then
+  export LANG="${LANG:-en_US.UTF-8}"
+  if [ "$kind" = text ]; then exec pbcopy; fi
+  f=$(mktemp -t omarchy-clipboard) || exit 1
+  cat >"$f"
+  osascript -e "set the clipboard to (read (POSIX file \"$f\") as «class PNGf»)" >/dev/null
+  s=$?; rm -f "$f"; exit $s
+fi
+type=text/plain; [ "$kind" = image ] && type=image/png
+if command -v wl-copy >/dev/null 2>&1; then
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    WAYLAND_DISPLAY=$(cd "$XDG_RUNTIME_DIR" 2>/dev/null && ls -1 wayland-? 2>/dev/null | head -n1)
+    export WAYLAND_DISPLAY
+  fi
+  if [ -n "$WAYLAND_DISPLAY" ]; then exec wl-copy --type "$type" >/dev/null 2>&1; fi
+fi
+if command -v xclip >/dev/null 2>&1; then
+  DISPLAY="${DISPLAY:-:0}" exec xclip -selection clipboard -t "$type" >/dev/null 2>&1
+fi
+echo "No clipboard tool found (pbcopy, wl-copy or xclip)" >&2
+exit 127'
+
+payload=$(mktemp)
+trap 'rm -f "$payload"' EXIT
+wl-paste --no-newline --type "$mime" >"$payload" 2>/dev/null || true
+[[ -s $payload ]] || fail "$(omarchy-i18n tailscale.clipboardEmpty)"
+
+if error=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+  "$name" "sh -c '$remote' sh $kind" <"$payload" 2>&1); then
+  omarchy-notification-send -g "󰅍" "$(omarchy-i18n tailscale.clipboardSent "$name")"
+else
+  fail "${error:-$(omarchy-i18n tailscale.clipboardSendFailed "$name")}"
+fi

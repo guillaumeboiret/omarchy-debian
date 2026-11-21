@@ -51,6 +51,7 @@ omarchy share folder <path>           # Share a folder
 
 omarchy tailscale send <machine> [file...]    # Taildrop to a tailnet machine (picker without files)
 omarchy tailscale receive [--once] [directory]  # Save incoming Taildrop files
+omarchy tailscale clipboard send <machine>      # Put this clipboard on a tailnet machine's clipboard (ssh)
 ```
 
 Shrink large captures before sharing them:

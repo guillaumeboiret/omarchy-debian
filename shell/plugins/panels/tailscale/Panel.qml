@@ -114,6 +114,7 @@ Panel {
     if (dns !== "") options.push({ kind: "dns", label: dns })
     if (ipv6 !== "") options.push({ kind: "ipv6", label: ipv6 })
     if (ip !== "") options.push({ kind: "ip", label: ip })
+    if (tailscale.canSendClipboard(peer)) options.push({ kind: "clipboard", label: Commons.I18n.t("tailscale.clipboardSend"), icon: "󰅍" })
     return options
   }
 
@@ -135,6 +136,7 @@ Panel {
         var ipv6 = peer.TailscaleIPv6 && peer.TailscaleIPv6.length > 0 ? String(peer.TailscaleIPv6[0] || "") : ""
         tailscale.copyToClipboard(ipv6, String(peer.DisplayName || peer.HostName || "") + " IPv6")
       } else if (kind === "ip") tailscale.copyPeerIp(peer)
+      else if (kind === "clipboard") tailscale.sendClipboard(peer)
     }
     if (sharedCopyPopup) sharedCopyPopup.close()
   }
@@ -590,6 +592,7 @@ Panel {
         else if (t === "n" || t === "N") tailscale.copyPeerName(root.selectedPeer())
         else if (t === "d" || t === "D") tailscale.copyPeerDnsName(root.selectedPeer())
         else if (t === "s" || t === "S") root.sendPeerFile(root.selectedPeer())
+        else if (t === "v" || t === "V") tailscale.sendClipboard(root.selectedPeer())
         else if (t === "/" && peerSearch.visible) peerSearch.forceActiveFocus()
         else if ((t === "r" || t === "R") && root.focusSection === "accounts") root.beginAccountRenameAt(root.accountIndex)
       }
@@ -1027,6 +1030,7 @@ Panel {
                     required property int index
                     width: parent.width
                     label: String(modelData.label || "")
+                    icon: String(modelData.icon || "󰆏")
                     selected: root.copyIndex === index
                     onHovered: root.copyIndex = index
                     onChosen: root.copyOption(String(modelData.kind || ""))
@@ -1374,6 +1378,7 @@ Panel {
     signal chosen()
     signal hovered()
     property string label: ""
+    property string icon: "󰆏"
     property bool selected: false
 
     visible: enabled
@@ -1407,7 +1412,7 @@ Panel {
       }
 
       Text {
-        text: "󰆏"
+        text: copyChoice.icon
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.icon

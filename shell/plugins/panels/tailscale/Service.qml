@@ -190,6 +190,23 @@ Item {
     Quickshell.execDetached(["omarchy-tailscale-send", target])
   }
 
+  // Over ssh, so only to the owner's own online Macs and Linux machines: the
+  // ones that can have both an ssh server and a clipboard to put it on.
+  function canSendClipboard(peer) {
+    if (!running || !peer || !peer.Online || peer.Mullvad) return false
+    var os = String(peer.OS || "")
+    if (os !== "macOS" && os !== "linux") return false
+    var owner = String(peer.UserID || "")
+    return owner !== "" && owner === String(selfUserId || "")
+  }
+
+  function sendClipboard(peer) {
+    if (!canSendClipboard(peer)) return
+    var target = peerAddress(peer)
+    if (target === "") return
+    Quickshell.execDetached(["omarchy-tailscale-clipboard-send", target])
+  }
+
   function refresh(forceAccounts, fullPeers) {
     if (installed) {
       refreshStatusAndAccounts(forceAccounts === true, fullPeers === true)
