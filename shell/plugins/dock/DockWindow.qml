@@ -56,6 +56,9 @@ PanelWindow {
   // straight to the edge of the dock.
   readonly property int iconInset: Style.spacing.md
   readonly property int slotSize: iconSize + iconInset * 2
+  // Debian port: the dock sits in a box styled like the shell's popups (theme
+  // background, accent border, window rounding), padded this much inside.
+  readonly property int boxPad: Style.spacing.sm + Style.normalBorderWidth
   // An app that is starting pulses down to this.
   readonly property real pulseOpacity: 0.7
   // Room inward of the dock for its menus: the tallest, the apps button's,
@@ -126,7 +129,7 @@ PanelWindow {
   // The slot a point along the dock falls before, counting from the first app.
   function slotIndexAt(point) {
     var along = window.vertical ? point.y : point.x
-    var first = window.slotSize
+    var first = window.slotSize + window.boxPad
     var count = window.dock ? window.dock.itemModel.count : 0
     return Math.max(0, Math.min(count, Math.round((along - first) / window.slotSize)))
   }
@@ -208,8 +211,8 @@ PanelWindow {
     right: window.position !== "left"
   }
 
-  implicitWidth: window.vertical ? window.gap + window.slotSize + window.popupRoom : 0
-  implicitHeight: window.vertical ? 0 : window.gap + window.slotSize + window.popupRoom
+  implicitWidth: window.vertical ? window.gap + window.slotSize + window.boxPad * 2 + window.popupRoom : 0
+  implicitHeight: window.vertical ? 0 : window.gap + window.slotSize + window.boxPad * 2 + window.popupRoom
 
   mask: Region {
     item: window.contentShown ? body : null
@@ -263,12 +266,12 @@ PanelWindow {
     LayoutMirroring.enabled: false
     LayoutMirroring.childrenInherit: true
 
-    width: slots.implicitWidth
-    height: slots.implicitHeight
+    width: slots.implicitWidth + window.boxPad * 2
+    height: slots.implicitHeight + window.boxPad * 2
     // How far the dock is tucked past its edge. Auto-hide slides it, but only
     // while the dock is on screen: arriving on a floating workspace shows it
     // where it belongs at once.
-    property real tuck: window.tucked ? window.slotSize + window.gap : 0
+    property real tuck: window.tucked ? window.slotSize + window.boxPad * 2 + window.gap : 0
 
     // Tucking away is quicker than coming back. A gentler curve than
     // Style.easeOut, which crosses the short slide in a frame or two.
@@ -302,6 +305,14 @@ PanelWindow {
         var at = point.position
         if (Math.hypot(at.x - window.dropPoint.x, at.y - window.dropPoint.y) > Style.space(4)) window.hoverStale = false
       }
+    }
+
+    BorderSurface {
+      id: box
+      anchors.fill: parent
+      radius: Style.cornerRadius
+      color: Commons.Color.popups.background
+      borderSpec: Border.surfaceSpec("popups", "border", Commons.Color.popups.border, Style.normalBorderWidth)
     }
 
     Grid {
