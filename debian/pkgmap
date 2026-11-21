@@ -37,7 +37,8 @@ nordvpn-bin                none:NordVPN has no Debian ARM64 package here
 claude-desktop             none:Claude Desktop has no Linux build; use Claude Code (cx) in the terminal
 openai-codex-desktop       none:Codex Desktop has no Linux ARM64 build
 lmstudio-bin               none:LM Studio has no Linux ARM64 build
-tailscale                  none:Install Tailscale from its Debian repo: curl -fsSL https://tailscale.com/install.sh | sh
+# tailscale: from Tailscale's own apt repo, which system-setup.sh step 28 adds
+tailscale                  apt:tailscale
 ollama                     none:Install Ollama with its official script: curl -fsSL https://ollama.com/install.sh | sh
 ollama-cuda                none:No NVIDIA GPU on Apple Silicon
 ollama-rocm                none:No AMD GPU on Apple Silicon

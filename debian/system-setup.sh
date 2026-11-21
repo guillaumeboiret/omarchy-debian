@@ -215,4 +215,14 @@ fi
 sed -i -E 's/^PercentageCritical=.*/PercentageCritical=3.0/; s/^PercentageAction=.*/PercentageAction=1.0/; s/^CriticalPowerAction=.*/CriticalPowerAction=PowerOff/' /etc/UPower/UPower.conf
 systemctl restart upower
 
+# 28. Tailscale from Tailscale's own apt repo (Omarchy installs it from Arch's repos). The user is made
+#     operator so the bar widget (omarchy.tailscale) can bring it up/down and log in without sudo.
+#     Logging in is left to the user: `tailscale up` prints the auth URL, or click the bar icon.
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list
+apt-get update
+apt-get install -y tailscale
+systemctl enable --now tailscaled.service
+tailscale set --operator="$TARGET_USER"
+
 echo "System part done."

@@ -200,3 +200,11 @@ WantedBy=graphical-session.target
 UNIT
 systemctl --user daemon-reload
 systemctl --user enable omarchy-battery-reserve.service
+
+# 20. Tailscale (installed by system-setup.sh step 28): Taildrop files land in ~/Downloads via Omarchy's
+#     receive service, with ExecStart repointed from Arch's /usr/bin to the port checkout. The unit
+#     waits for /usr/bin/tailscale (ConditionPathExists), so enabling it before the install is harmless.
+sed 's|^ExecStart=/usr/bin/|ExecStart=/usr/share/omarchy/bin/|' "$OM/default/systemd/user/omarchy-tailscale-receive.service" \
+  >"$HOME/.config/systemd/user/omarchy-tailscale-receive.service"
+systemctl --user daemon-reload
+systemctl --user enable omarchy-tailscale-receive.service
