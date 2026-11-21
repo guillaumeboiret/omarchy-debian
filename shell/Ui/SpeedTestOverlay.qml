@@ -295,18 +295,6 @@ PanelWindow {
         font.pixelSize: Style.font.caption
         Layout.alignment: Qt.AlignBaseline
       }
-
-      // Network rates also in bytes: 8 bits per byte, decimal megabytes.
-      Text {
-        textFormat: Text.PlainText
-        visible: root.unit === "Mbps"
-        readonly property real bytes: meter.reading / 8
-        text: "/ " + Commons.I18n.formatNumber(bytes, bytes < 10 ? 1 : 0) + " MB/s"
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        Layout.alignment: Qt.AlignBaseline
-      }
     }
 
     Row {
