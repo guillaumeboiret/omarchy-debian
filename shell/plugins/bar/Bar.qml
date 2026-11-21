@@ -90,6 +90,9 @@ Item {
   property string pendingTooltipText: ""
   property bool tooltipShown: false
   property int tooltipRequest: 0
+  // shell.json's bar.tooltips: false turns off every hover tooltip on the bar
+  // (Omarchy widgets, plugins and tray items alike). Panels keep their own.
+  property bool tooltipsEnabled: true
   property var activePopout: null
   // Where the open panel's card stands, and in which section of the bar, so
   // a panel taking over in the same section can start its card from there.
@@ -796,6 +799,11 @@ Item {
     // moves and whatever its settings, so a config write builds just the
     // widgets it adds (layoutWidgets).
     layoutConfig = normalizeLayout(config.layout)
+    tooltipsEnabled = config.tooltips !== false
+    if (!tooltipsEnabled) {
+      tooltipRequest += 1
+      clearTooltip()
+    }
     barConfigSerial++
   }
 
@@ -1530,7 +1538,7 @@ Item {
     var warm = tooltipShown || tooltipWarmTimer.running
     clearTooltip()
 
-    if (!targetTooltipHovered(target) || !text) {
+    if (!tooltipsEnabled || !targetTooltipHovered(target) || !text) {
       tooltipRequest += 1
       return
     }
