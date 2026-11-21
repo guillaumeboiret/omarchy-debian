@@ -175,3 +175,9 @@ WantedBy=graphical-session.target
 UNIT
 systemctl --user daemon-reload
 systemctl --user enable omarchy-copy-on-select.service
+
+# 18. Built-in microphone: asahi-audio's mic DSP targets the AOP array by its Arch/Fedora node name;
+#     Debian's Asahi kernel names it differently, so rename the node (else the DSP records the
+#     default source, i.e. itself, and dictation gets silence). Applies at the next WirePlumber start.
+mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
+install -m644 "$OM/debian/wireplumber/51-asahi-mic-node-name.conf" "$HOME/.config/wireplumber/wireplumber.conf.d/"
