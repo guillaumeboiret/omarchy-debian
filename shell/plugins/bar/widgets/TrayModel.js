@@ -34,7 +34,8 @@ function layoutHasWidget(layout, id) {
 // own icon would only show the same thing twice.
 var widgetsForTrayItems = [
   { widget: "omarchy.dropbox", item: "dropbox" },
-  { widget: "superwhisper.panel", item: "superwhisper" }
+  { widget: "superwhisper.panel", item: "superwhisper" },
+  { widget: "omarchy.voxtype", item: "voxtype" }
 ]
 
 // LocalSend's item shows no state, offers only Open and Quit, and its primary
