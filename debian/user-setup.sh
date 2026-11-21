@@ -181,3 +181,22 @@ systemctl --user enable omarchy-copy-on-select.service
 #     default source, i.e. itself, and dictation gets silence). Applies at the next WirePlumber start.
 mkdir -p "$HOME/.config/wireplumber/wireplumber.conf.d"
 install -m644 "$OM/debian/wireplumber/51-asahi-mic-node-name.conf" "$HOME/.config/wireplumber/wireplumber.conf.d/"
+
+# 19. Battery reserve: sleep at 5% (shown as 0%) instead of UPower powering off at 2%
+#     (debian/bin/omarchy-battery-reserve; UPower's own action moves to 1% in system-setup.sh)
+cat >"$HOME/.config/systemd/user/omarchy-battery-reserve.service" <<'UNIT'
+[Unit]
+Description=Sleep at the battery reserve (5%, shown as 0%) instead of powering off
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/share/omarchy/debian/bin/omarchy-battery-reserve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable omarchy-battery-reserve.service

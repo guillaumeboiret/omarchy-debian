@@ -1,6 +1,15 @@
+// Debian port: the last 5% is a reserve (debian/bin/omarchy-battery-reserve puts the Mac to sleep
+// there), so the shell shows it as 0% and the rest as 0-100%.
+var BATTERY_RESERVE = 0.05
+
+function usableFraction(fraction) {
+  var f = Number(fraction || 0)
+  return Math.max(0, Math.min(1, (f - BATTERY_RESERVE) / (1 - BATTERY_RESERVE)))
+}
+
 function batteryPercentage(device) {
   if (!device || !device.isPresent) return -1
-  return Math.round(Number(device.percentage || 0) * 100)
+  return Math.round(usableFraction(device.percentage) * 100)
 }
 
 // Read the battery's own state, not UPower.onBattery: a dock or charger that supplies less than
@@ -38,6 +47,7 @@ function profileAfterRead(current, replyText, signalsAtStart, signalsNow) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    usableFraction: usableFraction,
     batteryPercentage: batteryPercentage,
     isDischarging: isDischarging,
     shouldWarnLowBattery: shouldWarnLowBattery,

@@ -52,7 +52,10 @@ while read -r candidate; do
 done < <(upower -e 2>/dev/null | grep '/battery_')
 [[ -z $battery ]] && exit 0
 
+# Debian port: the last 5% is a reserve (debian/bin/omarchy-battery-reserve sleeps there), shown as 0%.
+battery_reserve=5
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
+shown_percentage=$(( percentage <= battery_reserve ? 0 : ((percentage - battery_reserve) * 100 + (100 - battery_reserve) / 2) / (100 - battery_reserve) ))
 capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
 energy=$(awk '/^ *energy:/ { print $2; exit }' <<<"$battery_info")
 energy_full=$(awk '/energy-full:/ { print $2; exit }' <<<"$battery_info")
@@ -106,10 +109,10 @@ charge_limit=${threshold_end:-100}
 # the draw, and stands in only when the readings to do the sum are missing.
 minutes_remaining=$(awk \
   -v energy="$energy" -v full="$energy_full" -v rate="${power_rate_raw:-0}" \
-  -v state="$state" -v limit="$charge_limit" -v fallback="$upower_hours" 'BEGIN {
+  -v state="$state" -v limit="$charge_limit" -v reserve="$battery_reserve" -v fallback="$upower_hours" 'BEGIN {
   if (rate < 0) rate = -rate
   if (energy != "" && full != "" && rate > 0.2) {
-    hours = state == "charging" ? (full * limit / 100 - energy) / rate : energy / rate
+    hours = state == "charging" ? (full * limit / 100 - energy) / rate : (energy - full * reserve / 100) / rate
   } else {
     hours = fallback
   }
@@ -147,7 +150,7 @@ if [[ $ac_online == "true" && -n $threshold_end ]]; then
 fi
 
 if [[ $shell_output == "true" ]]; then
-  printf 'percentage\t%s\n' "${percentage}%"
+  printf 'percentage\t%s\n' "${shown_percentage}%"
   if [[ $charge_holding == "true" ]]; then
     printf 'state\tholding\n'
   else
@@ -186,7 +189,7 @@ elif [[ $ac_online == "true" ]] && (( percentage >= 100 )); then
   fi
 fi
 
-parts=("$(omarchy-i18n battery.statusLabel "$percentage")")
+parts=("$(omarchy-i18n battery.statusLabel "$shown_percentage")")
 
 if [[ $charge_holding == "true" ]]; then
   if [[ -n $threshold_start && $threshold_start != $threshold_end ]]; then

@@ -45,8 +45,13 @@ function profileIcon(name) {
   return "󰂄"
 }
 
+// Debian port: the last 5% is a reserve (debian/bin/omarchy-battery-reserve puts the Mac to sleep
+// there), so it reads as 0% and the rest as 0-100%.
+var BATTERY_RESERVE = 0.05
+
 function batteryFraction(device) {
-  return device && device.isPresent ? Math.max(0, Math.min(1, device.percentage)) : 0
+  if (!(device && device.isPresent)) return 0
+  return Math.max(0, Math.min(1, (Number(device.percentage || 0) - BATTERY_RESERVE) / (1 - BATTERY_RESERVE)))
 }
 
 // rateFresh is false while the charge rate still dates from before external
@@ -73,7 +78,7 @@ function batteryIcon(device, onBattery, states, rateFresh) {
 
   var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-  var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
+  var index = Math.max(0, Math.min(9, Math.floor(batteryFraction(d) * 10)))
   var threshold = chargeThresholdActive(d, onBattery, states, rateFresh)
 
   if (threshold) return defaultIcons[index]
@@ -87,7 +92,7 @@ function modeLabel(device, onBattery, states, tr, rateFresh) {
   var d = device || {}
   if (!d.isPresent) return ""
 
-  var percentage = d.isPresent ? d.percentage : 0
+  var percentage = batteryFraction(d)
   if (chargeThresholdActive(d, onBattery, states, rateFresh)) return t("power.threshold", "Threshold")
   if (onBattery) return t("power.onBattery", "On battery")
   if (!onBattery && percentage >= 1) return t("power.fullyCharged", "Fully charged")

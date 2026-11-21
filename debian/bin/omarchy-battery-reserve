@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Debian port: keep the last 5% of the battery as a reserve and put the Mac to sleep when the
+# charge reaches it, instead of letting UPower power off at 2% (it asks for hybrid sleep, which
+# Asahi cannot do, and falls back to power off). The shell shows the reserve as 0%, so "0%"
+# means: plug in and open the lid, everything is still there.
+#
+# While on battery at or below the reserve: warn, give 30 s to plug in, then suspend. Woken
+# without a charger, it warns again and sleeps again 60 s later.
+
+set -uo pipefail
+
+reserve=${OMARCHY_BATTERY_RESERVE:-5}
+device=/org/freedesktop/UPower/devices/DisplayDevice
+notify_id=$((0x0BA7))
+
+reading() {
+  upower -i "$device" 2>/dev/null | awk '
+    /^ *state:/ { state = $2 }
+    /^ *percentage:/ { gsub(/%/, "", $2); pct = int($2) }
+    END { print state, pct }'
+}
+
+empty() {
+  local state pct
+  read -r state pct < <(reading)
+  [[ $state == discharging && -n $pct ]] && ((pct <= reserve))
+}
+
+notify() {
+  omarchy-notification-send -g 󰂎 -u critical -r "$notify_id" -t 30000 "$@" >/dev/null 2>&1 || true
+}
+
+while true; do
+  if empty; then
+    notify "Battery empty" "Going to sleep in 30 seconds. Plug in to keep working; your windows stay as they are."
+    plugged=false
+    for ((i = 0; i < 6; i++)); do
+      sleep 5
+      empty || { plugged=true; break; }
+    done
+    if [[ $plugged == true ]]; then
+      notify "Charging" "Staying awake." -u normal -t 5000
+    else
+      systemctl suspend
+      # Back from sleep: a minute to plug in before the next warning.
+      sleep 30
+    fi
+  fi
+  sleep 20
+done
