@@ -5,8 +5,8 @@
 # Asahi cannot do, and falls back to power off). The shell shows the reserve as 0%, so "0%"
 # means: plug in and open the lid, everything is still there.
 #
-# While on battery at or below the reserve: warn, give 30 s to plug in, then suspend. Woken
-# without a charger, it warns again and sleeps again 60 s later.
+# While on battery at or below the reserve: warn, give 2 minutes to plug in, then suspend. Woken
+# without a charger, it warns again 30 s later and sleeps again after another 2 minutes.
 
 set -uo pipefail
 
@@ -28,14 +28,14 @@ empty() {
 }
 
 notify() {
-  omarchy-notification-send -g 󰂎 -u critical -r "$notify_id" -t 30000 "$@" >/dev/null 2>&1 || true
+  omarchy-notification-send -g 󰂎 -u critical -r "$notify_id" -t 120000 "$@" >/dev/null 2>&1 || true
 }
 
 while true; do
   if empty; then
-    notify "Battery empty" "Going to sleep in 30 seconds. Plug in to keep working; your windows stay as they are."
+    notify "Battery empty" "Going to sleep in 2 minutes. Plug in to keep working; your windows stay as they are."
     plugged=false
-    for ((i = 0; i < 6; i++)); do
+    for ((i = 0; i < 24; i++)); do
       sleep 5
       empty || { plugged=true; break; }
     done
@@ -43,7 +43,7 @@ while true; do
       notify "Charging" "Staying awake." -u normal -t 5000
     else
       systemctl suspend
-      # Back from sleep: a minute to plug in before the next warning.
+      # Back from sleep: 30 s before the next warning.
       sleep 30
     fi
   fi
