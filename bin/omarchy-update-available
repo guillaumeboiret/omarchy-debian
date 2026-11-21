@@ -10,7 +10,14 @@ updates=()
 if [[ $OMARCHY_PATH != "/usr/share/omarchy" || -f /etc/debian_version ]]; then
   upstream=$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
   if [[ -n $upstream ]]; then
-    GIT_TERMINAL_PROMPT=0 timeout 10 git -C "$OMARCHY_PATH" fetch --quiet 2>/dev/null || true
+    # Upstream gets commits all day: fetch at most once a day, so the bar badge
+    # only appears daily instead of after every recheck.
+    stamp="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update-available.fetched"
+    if [[ ! -f $stamp ]] || (( $(date +%s) - $(stat -c %Y "$stamp") >= 86400 )); then
+      if GIT_TERMINAL_PROMPT=0 timeout 10 git -C "$OMARCHY_PATH" fetch --quiet 2>/dev/null; then
+        mkdir -p "${stamp%/*}" && touch "$stamp"
+      fi
+    fi
 
     behind=$(git -C "$OMARCHY_PATH" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
     if (( behind > 0 )); then
