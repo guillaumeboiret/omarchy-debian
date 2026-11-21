@@ -50,6 +50,8 @@ Example `shell.json` (bar subtree only shown):
 
 `center` is a box in the middle of the bar whose modules are centered as one group on the exact horizontal/vertical center. `centerBegin` and `centerEnd` hang off the box's two edges and move out as it grows; with the box empty they meet in the middle of the bar.
 
+Set `"tooltips": false` under `bar` to turn off every hover tooltip on the bar (Omarchy widgets, plugin widgets and tray items). Clicks and menus are unchanged; panels keep their own tooltips.
+
 ## Module catalogue
 
 ### First-party interactive widgets
