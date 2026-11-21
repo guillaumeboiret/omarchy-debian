@@ -74,7 +74,7 @@ Set `"tooltips": false` under `bar` to turn off every hover tooltip on the bar (
 | `omarchy.agents` | AI coding agent limits with pace, today, last week, and all-time model breakdown | left = panel · right = launch agent · middle = next subscription |
 | `omarchy.local-models` | Models running on this machine and the tailnet, and the RAM they run in; shown only where a model runs or fits | left = panel · middle = refresh |
 | `omarchy.power` | Battery/AC icon + popup with battery stats, power profiles, and system info | left = popup · right = toggle percentage |
-| `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left = popup · right = toggle radio |
+| `omarchy.bluetooth` | Bluetooth icon + popup with device list, connect/disconnect, battery | left/right = popup (radio switch inside) |
 | `omarchy.monitor` | Brightness and laptop display controls | left = popup |
 
 The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "Reminder", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets.

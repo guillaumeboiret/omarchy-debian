@@ -654,10 +654,11 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.icon
-    onPressed: function(b) {
-      if (b === Qt.RightButton) root.toggleBluetooth()
-      else root.toggle()
-    }
+    // Any click opens the popup, like the macOS menu bar. Right-click used to
+    // toggle the radio, which rfkill-blocked Bluetooth (persisting across
+    // reboots) and dropped every connected mouse and keyboard. The power
+    // switch inside the popup still turns it off on purpose.
+    onPressed: function(b) { root.toggle() }
   }
 
   KeyboardPanel {
