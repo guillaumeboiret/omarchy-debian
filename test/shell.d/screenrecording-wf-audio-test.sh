@@ -8,7 +8,7 @@ source "$(dirname "$0")/base-test.sh"
 # go through a throwaway null sink. A source whose loopback won't load is left
 # out with a notification naming it, never recorded as silence.
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap '[[ -s $tmp/loopback ]] && kill "$(<"$tmp/loopback")" 2>/dev/null; rm -rf "$tmp"' EXIT
 
 awk '
   /^(wf_audio_device|wf_audio_unavailable|wf_audio_cleanup)\(\) \{/ { copying = 1 }
@@ -35,6 +35,17 @@ case $1 in
     ;;
 esac
 SH
+# The microphone joins the null sink through pw-loopback, which exits at once
+# when its capture target is listed in $tmp/refuse.
+cat >"$tmp/bin/pw-loopback" <<'SH'
+#!/bin/bash
+echo "pw-loopback $*" >>"$TMP/calls"
+for refused in $(cat "$TMP/refuse" 2>/dev/null); do
+  [[ " $* " != *" $refused "* ]] || exit 1
+done
+trap 'exit 0' TERM
+while true; do sleep 0.05; done
+SH
 cat >"$tmp/bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
 echo "notify $*" >>"$TMP/notes"
@@ -43,8 +54,9 @@ SH
 chmod +x "$tmp/bin"/*
 
 device() {
-  rm -f "$tmp/calls" "$tmp/notes" "$tmp/next" "$tmp/modules"
-  TMP=$tmp PATH="$tmp/bin:$PATH" DESKTOP_AUDIO=$1 MICROPHONE_AUDIO=$2 PA_MODULES_FILE=$tmp/modules \
+  [[ -s $tmp/loopback ]] && kill "$(<"$tmp/loopback")" 2>/dev/null
+  rm -f "$tmp/calls" "$tmp/notes" "$tmp/next" "$tmp/modules" "$tmp/loopback"
+  TMP=$tmp PATH="$tmp/bin:$PATH" DESKTOP_AUDIO=$1 MICROPHONE_AUDIO=$2 PA_MODULES_FILE=$tmp/modules PW_LOOPBACK_PID_FILE=$tmp/loopback \
     bash -c 'source "$TMP/functions"; wf_audio_device' >"$tmp/out"
 }
 
@@ -59,11 +71,13 @@ unloaded() {
 : >"$tmp/refuse"
 device true true
 [[ $(cat "$tmp/out") == omarchy_screenrec.monitor ]] || fail "both sources record through the null sink" "$(cat "$tmp/out")"
-[[ $(cat "$tmp/modules") == $'10\n11\n12' ]] || fail "all three module ids are kept for stop" "$(cat "$tmp/modules")"
+[[ $(cat "$tmp/modules") == $'10\n11' ]] || fail "both module ids are kept for stop" "$(cat "$tmp/modules")"
+grep -q 'pw-loopback .*target.object=mic ' "$tmp/calls" && kill -0 "$(<"$tmp/loopback")" ||
+  fail "the microphone feeds the null sink through a running pw-loopback" "$(cat "$tmp/calls")"
 [[ ! -e $tmp/notes ]] || fail "a full mix notifies nothing" "$(cat "$tmp/notes")"
 pass "desktop and microphone audio record together through the null sink"
 
-echo "source=mic" >"$tmp/refuse"
+echo "--capture-props=target.object=mic" >"$tmp/refuse"
 device true true
 [[ $(cat "$tmp/out") == speakers.monitor ]] || fail "a microphone that won't mix leaves desktop audio" "$(cat "$tmp/out")"
 [[ $(unloaded) == "11 10 " && ! -e $tmp/modules ]] || fail "the modules that loaded are unloaded" "$(cat "$tmp/calls")"
@@ -74,12 +88,12 @@ pass "a microphone that won't mix is dropped, named, and desktop audio records a
 echo "source=speakers.monitor" >"$tmp/refuse"
 device true true
 [[ $(cat "$tmp/out") == mic ]] || fail "desktop audio that won't mix leaves the microphone" "$(cat "$tmp/out")"
-[[ $(unloaded) == "11 10 " ]] || fail "the modules that loaded are unloaded" "$(cat "$tmp/calls")"
+[[ $(unloaded) == "10 " ]] || fail "the modules that loaded are unloaded" "$(cat "$tmp/calls")"
 grep -q 'notify .*desktop audio' "$tmp/notes" && ! grep -q 'microphone' "$tmp/notes" ||
   fail "the dropped desktop audio is named" "$(cat "$tmp/notes" 2>/dev/null)"
 pass "desktop audio that won't mix is dropped, named, and the microphone records alone"
 
-echo "source=speakers.monitor source=mic" >"$tmp/refuse"
+echo "source=speakers.monitor --capture-props=target.object=mic" >"$tmp/refuse"
 device true true
 [[ ! -s $tmp/out ]] || fail "with neither source there is no audio device" "$(cat "$tmp/out")"
 [[ $(grep -c '^notify' "$tmp/notes") == 2 ]] || fail "both dropped sources are named" "$(cat "$tmp/notes")"
