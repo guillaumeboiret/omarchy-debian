@@ -20,6 +20,9 @@ Item {
   readonly property string position: DockModel.normalizePosition(dockConfig.position)
   readonly property bool vertical: DockModel.isVertical(position)
   readonly property bool autohide: dockConfig.autohide === true
+  // Debian port: also offer the dock on tiled (non-floating) workspaces, where
+  // it stays tucked away until the pointer reaches its edge.
+  readonly property bool everywhere: dockConfig.everywhere === true
 
   // The dock's order for the session, as desktop ids, set when the user moves
   // an app: a drag moves it, and keeping it in the dock puts it at the end. An
