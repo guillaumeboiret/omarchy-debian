@@ -288,6 +288,13 @@ case ${1:-help} in
   __build-steps) shift; build_steps "$@" ;;
   update)
     update_omarchy
+    # Passwordless sudo's root-owned helper copy (system-setup step 29) doesn't follow the checkout.
+    for f in omarchy-sudo-passwordless omarchy-security-functions; do
+      if ! cmp -s "$OM/bin/$f" "/usr/bin/$f"; then
+        warn "passwordless sudo helper changed — run: sudo bash $OM/debian/system-setup.sh"
+        break
+      fi
+    done
     if command -v rustup >/dev/null; then
       say "Updating Rust toolchain"; rustup update stable >/dev/null 2>&1 || warn "rustup update failed"
     fi

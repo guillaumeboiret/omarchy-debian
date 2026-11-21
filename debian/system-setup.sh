@@ -225,4 +225,19 @@ apt-get install -y tailscale
 systemctl enable --now tailscaled.service
 tailscale set --operator="$TARGET_USER"
 
+# 29. Passwordless sudo (Omarchy menu > Setup > Security > Passwordless Sudo, and the bar's red lock).
+#     omarchy-sudo-passwordless runs its root side via sudo from /usr/bin, as Omarchy's package puts it
+#     on Arch. Those are root-owned copies, never symlinks into the checkout: the checkout is
+#     user-writable, so a link would hand root to anything running as the user. Arch's ALPM hook
+#     revokes every grant before the package replaces the helper; on Debian this step does that before
+#     it replaces a changed copy (and stops if revoking fails). The tmpfiles rule clears grants at boot.
+if ! cmp -s "$OM/bin/omarchy-sudo-passwordless" /usr/bin/omarchy-sudo-passwordless ||
+  ! cmp -s "$OM/bin/omarchy-security-functions" /usr/bin/omarchy-security-functions; then
+  if [[ -x /usr/bin/omarchy-sudo-passwordless ]]; then
+    /usr/bin/omarchy-sudo-passwordless __cleanup-all
+  fi
+  install -o root -g root -m 0755 "$OM/bin/omarchy-security-functions" "$OM/bin/omarchy-sudo-passwordless" /usr/bin/
+fi
+install -o root -g root -m 0644 "$OM/etc/tmpfiles.d/omarchy-nopasswd-sudo.conf" /etc/tmpfiles.d/
+
 echo "System part done."
