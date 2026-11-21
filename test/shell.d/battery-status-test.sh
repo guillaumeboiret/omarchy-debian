@@ -58,11 +58,11 @@ chmod +x "$tmp_dir/bin/upower"
 
 shell_output=$(OMARCHY_TEST_NATIVE_PATH=macsmc-battery OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 
-grep -Fx $'percentage\t51%' <<<"$shell_output" >/dev/null || fail "battery status reports the machine's battery, not the mouse's"
+grep -Fx $'percentage\t48%' <<<"$shell_output" >/dev/null || fail "battery status reports the machine's battery, not the mouse's"
 grep -Fx $'state\tdischarging' <<<"$shell_output" >/dev/null || fail "battery status reports state"
 grep -Fx $'rate\t10.8W' <<<"$shell_output" >/dev/null || fail "battery status reports live sysfs power rate"
 grep -Fx $'size\t56Wh' <<<"$shell_output" >/dev/null || fail "battery status reports full capacity"
-grep -Fx $'time\t2h 37m' <<<"$shell_output" >/dev/null || fail "battery status works the time left out from the draw it shows"
+grep -Fx $'time\t2h 21m' <<<"$shell_output" >/dev/null || fail "battery status works the time left out from the draw it shows"
 grep -Fx $'cycles\t212' <<<"$shell_output" >/dev/null || fail "battery status reports native-path cycle count"
 grep -Fx $'threshold\t75-80%' <<<"$shell_output" >/dev/null || fail "battery status reports native-path charge thresholds"
 line_output=$(OMARCHY_TEST_NATIVE_PATH=macsmc-battery OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status")
@@ -74,7 +74,7 @@ printf '7300000\n' >"$tmp_dir/power/CMB0/power_now"
 sed -i 's/native-path:          macsmc-battery/native-path:          CMB0/' "$tmp_dir/bin/upower"
 generic_output=$(OMARCHY_TEST_NATIVE_PATH=CMB0 OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 grep -Fx $'rate\t7.3W' <<<"$generic_output" >/dev/null || fail "battery status accepts arbitrary UPower battery paths"
-grep -Fx $'time\t3h 53m' <<<"$generic_output" >/dev/null || fail "battery status time left follows the live draw"
+grep -Fx $'time\t3h 29m' <<<"$generic_output" >/dev/null || fail "battery status time left follows the live draw"
 pass "battery status supports Apple Silicon and arbitrary native battery paths"
 
 # Firmware that doesn't know the present rate leaves current_now in place but
@@ -128,7 +128,7 @@ pass "battery status doesn't trip a hold early"
 # Once the battery reaches the threshold, idle charging is holding.
 sed -i 's/percentage:           79.5%/percentage:           80.0%/' "$hold_dir/bin/upower"
 held_output=$(OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
-grep -Fx $'percentage\t80%' <<<"$held_output" >/dev/null || fail "threshold percentage still displays as 80%"
+grep -Fx $'percentage\t79%' <<<"$held_output" >/dev/null || fail "threshold percentage displays as 79% (80% minus the 5% reserve)"
 grep -Fx $'state\tholding' <<<"$held_output" >/dev/null || fail "idle charging at the threshold is holding"
 pass "battery status reports holding once the raw percentage reaches the threshold"
 
@@ -164,7 +164,7 @@ pass "battery status times charging to its own battery's limit"
 # The status line and its durations follow the Omarchy language.
 echo "da" >"$tmp_dir/language"
 danish_output=$(OMARCHY_LANGUAGE_FILE="$tmp_dir/language" OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status")
-[[ $danish_output == "Batteri 40%  ·  1 t 30 min til fuld  ·  "* ]] || fail "battery status reads in the Omarchy language" "$danish_output"
+[[ $danish_output == "Batteri 37%  ·  1 t 30 min til fuld  ·  "* ]] || fail "battery status reads in the Omarchy language" "$danish_output"
 danish_time=$(OMARCHY_LANGUAGE_FILE="$tmp_dir/language" OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 grep -Fx $'time\t1 t 30 min' <<<"$danish_time" >/dev/null || fail "battery status durations follow the Omarchy language" "$danish_time"
 pass "battery status reads in the Omarchy language"
@@ -201,7 +201,7 @@ full_output=$(OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$P
 sed -i 's/state:                fully-charged/state:                discharging/' "$hold_dir/bin/upower"
 printf '10000000\n' >"$hold_dir/power/BAT0/power_now"
 draining_output=$(OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status")
-[[ $draining_output == "Battery 100%  ·  5h 19m left  ·  "*"10W"*"53Wh" ]] || fail "a battery draining on AC at 100% is not fully charged" "$draining_output"
+[[ $draining_output == "Battery 100%  ·  5h 3m left  ·  "*"10W"*"53Wh" ]] || fail "a battery draining on AC at 100% is not fully charged" "$draining_output"
 sed -i 's/state:                discharging/state:                fully-charged/' "$hold_dir/bin/upower"
 
 # A battery with no time estimate and no capacity reading leaves both out.
@@ -209,5 +209,5 @@ sed -i 's/state:                fully-charged/state:                discharging/
 printf '0\n' >"$hold_dir/power/ac/online"
 printf '9000000\n' >"$hold_dir/power/BAT0/power_now"
 sparse_output=$(OMARCHY_POWER_SUPPLY_PATH="$hold_dir/power" PATH="$hold_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status")
-[[ $sparse_output == "Battery 60%  ·  "$' '"9W" ]] || fail "missing readings drop out of the status line" "$sparse_output"
+[[ $sparse_output == "Battery 58%  ·  "$' '"9W" ]] || fail "missing readings drop out of the status line" "$sparse_output"
 pass "battery status leaves out readings it doesn't have"

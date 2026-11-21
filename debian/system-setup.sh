@@ -209,4 +209,10 @@ open(p, 'w').write(s.replace(old, new))
 PY
 fi
 
+# 27. Battery: omarchy-battery-reserve (user unit) puts the Mac to sleep at 5%. UPower's critical
+#     action asks for HybridSleep, which Asahi can't do, so it powered off at 2% with no warning;
+#     keep it only as a last resort at 1%.
+sed -i -E 's/^PercentageCritical=.*/PercentageCritical=3.0/; s/^PercentageAction=.*/PercentageAction=1.0/; s/^CriticalPowerAction=.*/CriticalPowerAction=PowerOff/' /etc/UPower/UPower.conf
+systemctl restart upower
+
 echo "System part done."
