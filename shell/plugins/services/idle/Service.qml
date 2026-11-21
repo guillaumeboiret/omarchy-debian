@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import "IdleModel.js" as IdleModel
 import qs.Commons
@@ -18,14 +19,32 @@ Item {
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle
     ? shell.shellConfig.idle : (shell && shell.idleConfig ? shell.idleConfig : ({}))
-  readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
-  readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
+  // Debian port: per power source timings. shell.json idle.battery / idle.ac override the flat
+  // idle keys; screenOff (DPMS off) and suspend are extra stages measured from the last input,
+  // and they keep running after the lock. 0 = never. Stay Awake (coffee) disables all of it.
+  readonly property bool onBattery: UPower.onBattery
+  readonly property var powerConfig: (onBattery ? idleConfig.battery : idleConfig.ac) || ({})
+  function idleSetting(key, fallback) {
+    var value = root.powerConfig[key]
+    if (value === undefined) value = root.idleConfig[key]
+    return secondsFromConfig(value, fallback)
+  }
+  readonly property int screensaverTimeoutSeconds: idleSetting("screensaver", defaultScreensaverSeconds)
+  readonly property int lockTimeoutSeconds: idleSetting("lock", defaultLockSeconds)
+  readonly property int screenOffTimeoutSeconds: idleSetting("screenOff", 0)
+  readonly property int suspendTimeoutSeconds: idleSetting("suspend", 0)
+  property real lastInputMs: 0
+  property bool lateStagesArmed: false
+  property bool screenOffThisCycle: false
   readonly property bool screensaverEnabled: screensaverTimeoutSeconds > 0
   readonly property bool lockEnabled: lockTimeoutSeconds > 0
   // Debian port: "lockAfterScreensaver": true in shell.json idle → dismissing the screensaver asks for the password.
   readonly property bool lockAfterScreensaver: idleConfig.lockAfterScreensaver === true
-  readonly property bool idleTimersEnabled: screensaverEnabled || lockEnabled
-  readonly property int firstIdleTimeoutSeconds: IdleModel.firstIdleTimeout(screensaverTimeoutSeconds, lockTimeoutSeconds)
+  readonly property bool idleTimersEnabled: screensaverEnabled || lockEnabled || screenOffTimeoutSeconds > 0 || suspendTimeoutSeconds > 0
+  readonly property int firstIdleTimeoutSeconds: {
+    var times = [screensaverTimeoutSeconds, lockTimeoutSeconds, screenOffTimeoutSeconds, suspendTimeoutSeconds].filter(function(t) { return t > 0 })
+    return times.length ? Math.min.apply(null, times) : 0
+  }
   readonly property int screensaverDelaySeconds: IdleModel.delayAfterFirstIdle(screensaverTimeoutSeconds, firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: IdleModel.delayAfterFirstIdle(lockTimeoutSeconds, firstIdleTimeoutSeconds)
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
@@ -99,6 +118,36 @@ Item {
     runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
 
+  function scheduleStage(timer, seconds) {
+    timer.stop()
+    if (!(seconds > 0)) return
+    timer.interval = Math.max(1000, seconds * 1000 - (Date.now() - root.lastInputMs))
+    timer.restart()
+  }
+
+  function armLateStages() {
+    root.lateStagesArmed = true
+    scheduleStage(screenOffTimer, root.screenOffTimeoutSeconds)
+    scheduleStage(suspendTimer, root.suspendTimeoutSeconds)
+    logEvent("late-stages", (root.onBattery ? "battery" : "ac") + " screenOff=" + root.screenOffTimeoutSeconds + " suspend=" + root.suspendTimeoutSeconds)
+  }
+
+  function disarmLateStages(reason) {
+    if (!root.lateStagesArmed) return
+    root.lateStagesArmed = false
+    screenOffTimer.stop()
+    suspendTimer.stop()
+    if (root.screenOffThisCycle) runProcess(screenOnProcess, "screen-on", "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })'")
+    root.screenOffThisCycle = false
+    logEvent("late-stages-cancel", reason || "")
+  }
+
+  // Plugging in or unplugging while idle reschedules the remaining stages.
+  onOnBatteryChanged: {
+    logEvent("power-source", onBattery ? "battery" : "ac")
+    if (root.lateStagesArmed) Qt.callLater(root.armLateStages)
+  }
+
   function startIdleCycle() {
     if (root.idledThisCycle) {
       logEvent("idle-cycle-already-running")
@@ -133,6 +182,7 @@ Item {
     screensaverTimer.stop()
     lockTimer.stop()
     screensaverLaunchGraceTimer.stop()
+    disarmLateStages(reason)
 
     if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
 
@@ -175,8 +225,14 @@ Item {
     logEvent("idle-monitor", idleMonitor.isIdle ? "idle" : "active")
     if (!root.idleEnabled || !root.idleTimersEnabled) return
 
-    if (idleMonitor.isIdle) startIdleCycle()
-    else handleActiveSignal()
+    if (idleMonitor.isIdle) {
+      root.lastInputMs = Date.now() - root.firstIdleTimeoutSeconds * 1000
+      startIdleCycle()
+      armLateStages()
+    } else {
+      disarmLateStages("activity")
+      handleActiveSignal()
+    }
   }
 
   function statusJson() {
@@ -190,6 +246,10 @@ Item {
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      onBattery: root.onBattery,
+      screenOff: root.screenOffTimeoutSeconds,
+      suspend: root.suspendTimeoutSeconds,
+      lateStagesArmed: root.lateStagesArmed,
       lockAfterScreensaver: root.lockAfterScreensaver,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
@@ -284,6 +344,32 @@ Item {
       if (root.screensaverStartedThisCycle && screensaverLaunchGraceTimer.running && !idleMonitor.isIdle) root.userReturned(true)
       else root.lockSystem("lock-timeout")
     }
+  }
+
+  Timer {
+    id: screenOffTimer
+    repeat: false
+    onTriggered: {
+      if (!root.idleEnabled || !root.lateStagesArmed) return
+      root.screenOffThisCycle = true
+      root.runProcess(screenOffProcess, "screen-off", "hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\" })'")
+    }
+  }
+
+  Timer {
+    id: suspendTimer
+    repeat: false
+    onTriggered: {
+      if (!root.idleEnabled || !root.lateStagesArmed) return
+      root.runProcess(suspendProcess, "suspend", "omarchy-system-lock >/dev/null 2>&1; systemctl suspend")
+    }
+  }
+
+  Process { id: screenOffProcess }
+  Process { id: screenOnProcess }
+  Process {
+    id: suspendProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "suspend exitCode=" + exitCode + " status=" + exitStatus) }
   }
 
   Timer {
