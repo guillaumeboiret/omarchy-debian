@@ -643,52 +643,47 @@ if status "$legacy_runtime"; then fail "--status reports nothing when no recorde
 [[ ! -e $OMARCHY_TEST_NOTIFICATION_ARGS ]] || fail "--status never notifies, even without a recordings directory" "$(<"$OMARCHY_TEST_NOTIFICATION_ARGS")"
 pass "--status answers what stop would act on, without a recordings directory, notifications or signals"
 
-# A recording that ended without a stop leaves its audio loopbacks and sink
-# loaded. Status and stop unload them, newest first, once the saved recorder is
-# gone; while it records, or before it saves its pid, the mix stays.
-cat >"$stub_bin/pactl" <<'SH'
-#!/bin/bash
-printf '%s\n' "$*" >>"$OMARCHY_TEST_AUDIO_CALLS"
-SH
-chmod +x "$stub_bin/pactl"
-
+# A recording that ended without a stop leaves its microphone track behind.
+# Status and stop end it and delete the file once the saved recorder is gone;
+# while it records, or before it saves its pid, the track stays.
 audio_runtime="$tmp_dir/audio-runtime"
-audio_calls="$tmp_dir/audio-calls"
-audio_modules="$audio_runtime/omarchy-screenrecord-pa-modules"
+mic_state="$audio_runtime/omarchy-screenrecord-mic"
+mic_track="$recording_dir/.stale-mic.flac"
 mkdir -p "$audio_runtime"
 echo 123 >"$audio_runtime/omarchy-screenrecord-pid"
 rm -f "$recording_flag"
 
 recorder() {
   XDG_RUNTIME_DIR="$audio_runtime" OMARCHY_TEST_HELPER_CALLS="$helper_calls" OMARCHY_TEST_RECORDING="$recording_flag" \
-    OMARCHY_TEST_LIVE_PID="${2:-}" OMARCHY_TEST_AUDIO_CALLS="$audio_calls" OMARCHY_SCREENRECORD_DIR="$recording_dir" \
+    OMARCHY_TEST_LIVE_PID="${2:-}" OMARCHY_SCREENRECORD_DIR="$recording_dir" \
     "$ROOT/bin/omarchy-capture-screenrecording" "$1" >/dev/null 2>&1
 }
 
+stale_mic() {
+  # The pid is not a pw-record, so cleanup must not signal it.
+  printf '%s\n%s\n' "$$" "$mic_track" >"$mic_state"
+  touch "$mic_track"
+}
+
 for action in --status --stop-recording; do
-  printf '10\n11\n12\n' >"$audio_modules"
+  stale_mic
   : >"$helper_calls"
-  : >"$audio_calls"
   status=0
   recorder "$action" || status=$?
   (( status == 1 )) || fail "$action reports no recorder after it exits" "$status"
-  [[ $(<"$audio_calls") == $'unload-module 12\nunload-module 11\nunload-module 10' ]] ||
-    fail "$action releases the exited recorder's audio loopbacks before its sink" "$(<"$audio_calls")"
-  [[ ! -e $audio_modules ]] || fail "$action removes the stale audio module list"
+  [[ ! -e $mic_track && ! -e $mic_state ]] || fail "$action deletes the exited recorder's microphone track"
   ! grep -q -- '--signal' "$helper_calls" || fail "$action signals no other recorder"
-  pass "$action releases audio capture after the saved recorder exits"
+  pass "$action releases the microphone track after the saved recorder exits"
 done
 
-printf '10\n11\n12\n' >"$audio_modules"
-: >"$audio_calls"
+stale_mic
 recorder --status 123 || fail "status recognizes the active recorder"
-[[ ! -s $audio_calls && -e $audio_modules ]] || fail "status leaves an active recording's audio modules loaded"
-pass "status preserves the active recorder's audio capture"
+[[ -e $mic_track && -e $mic_state ]] || fail "status leaves an active recording's microphone track"
+pass "status preserves the active recorder's microphone track"
 
 rm "$audio_runtime/omarchy-screenrecord-pid"
-: >"$audio_calls"
 status=0
 recorder --status || status=$?
 (( status == 1 )) || fail "status reports inactive before the recorder starts"
-[[ ! -s $audio_calls && -e $audio_modules ]] || fail "status preserves the audio mix created before the recorder starts"
-pass "status leaves the starting recorder's audio mix alone"
+[[ -e $mic_track && -e $mic_state ]] || fail "status preserves the microphone track started before the recorder saves its pid"
+pass "status leaves the starting recorder's microphone track alone"

@@ -40,17 +40,11 @@ cat >"$tmp/bin/pactl" <<'SH'
 case $1 in
   get-default-sink) echo desktop ;;
   get-default-source) echo microphone ;;
-  load-module)
-    id=$(<"$TEST_STATE/next-module")
-    echo $(( id + 1 )) >"$TEST_STATE/next-module"
-    touch "$TEST_STATE/module-$id"
-    echo "$id"
-    ;;
-  unload-module) rm -f "$TEST_STATE/module-$2" ;;
 esac
 SH
-cat >"$tmp/bin/pw-loopback" <<'SH'
+cat >"$tmp/bin/pw-record" <<'SH'
 #!/bin/bash
+touch "${@: -1}"
 trap 'exit 0' TERM
 while true; do /usr/bin/sleep 0.05; done
 SH
@@ -136,16 +130,16 @@ wait_for() {
 assert_recording() {
   [[ -s $XDG_RUNTIME_DIR/omarchy-screenrecord-pid && -s $XDG_RUNTIME_DIR/omarchy-screenrecord-filename ]] ||
     fail "the new recording retains its saved state"
-  [[ -f $XDG_RUNTIME_DIR/omarchy-screenrecord-pa-modules ]] || fail "the new recording retains its audio mix"
-  for module in $(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-pa-modules"); do
-    [[ -f $tmp/module-$module ]] || fail "the new recording's audio module stays loaded" "$module"
-  done
+  local mic_pid mic_file
+  [[ -f $XDG_RUNTIME_DIR/omarchy-screenrecord-mic ]] || fail "the new recording retains its microphone track"
+  { read -r mic_pid; read -r mic_file; } <"$XDG_RUNTIME_DIR/omarchy-screenrecord-mic"
+  kill -0 "$mic_pid" 2>/dev/null && [[ -f $mic_file ]] || fail "the new recording's microphone track keeps recording" "$mic_pid $mic_file"
 }
 
 echo 123 >"$XDG_RUNTIME_DIR/omarchy-screenrecord-pid"
-printf '10\n11\n12\n' >"$XDG_RUNTIME_DIR/omarchy-screenrecord-pa-modules"
-touch "$tmp/module-10" "$tmp/module-11" "$tmp/module-12"
-echo 20 >"$tmp/next-module"
+# The exited recording's microphone track, by a pid that is not a pw-record.
+printf '%s\n%s\n' "$$" "$tmp/old-mic.flac" >"$XDG_RUNTIME_DIR/omarchy-screenrecord-mic"
+touch "$tmp/old-mic.flac"
 TEST_ROLE=old-status "$record" --status >/dev/null 2>&1 & old=$!
 wait_for "$tmp/checked"
 TEST_ROLE=new-start "$record" --fullscreen --resolution=1280x800 --with-desktop-audio --with-microphone-audio >/dev/null 2>&1 & new=$!
@@ -206,7 +200,7 @@ for second in toggle stop; do
   wait "$pending" || true
   ! kill -0 "$waiting" 2>/dev/null || fail "a cancelled start stops its recorder"
   [[ $(<"$tmp/recorder-pid") == "$waiting" ]] || fail "a $second during a pending start does not begin another recording"
-  for state in pid filename pa-modules starting cancel; do
+  for state in pid filename mic starting cancel; do
     [[ ! -e $XDG_RUNTIME_DIR/omarchy-screenrecord-$state ]] || fail "a cancelled start leaves no $state behind"
   done
   pass "a $second during a start that is still waiting on its recorder cancels it"
@@ -223,7 +217,7 @@ echo release >"$tmp/release"
 timeout 5 tail --pid="$pending" -f /dev/null || fail "the start finishes after its last step"
 wait "$pending" || true
 ! kill -0 "$committed" 2>/dev/null || fail "a stop during the start's last step ends the recording"
-for state in pid filename pa-modules starting cancel; do
+for state in pid filename mic starting cancel; do
   [[ ! -e $XDG_RUNTIME_DIR/omarchy-screenrecord-$state ]] || fail "a stop during the start's last step leaves no $state behind"
 done
 pass "a stop while the start saves its recording as started still ends it"
