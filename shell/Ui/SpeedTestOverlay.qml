@@ -188,21 +188,12 @@ PanelWindow {
           Layout.fillWidth: true
         }
 
-        // Footer: key hints left, action right. The button fades rather than
-        // unmounts while a run is in flight, so the card never shifts.
+        // The button fades rather than unmounts while a run is in flight, so
+        // the card never shifts.
         RowLayout {
           Layout.fillWidth: true
-          spacing: Style.space(12)
 
-          Text {
-            textFormat: Text.PlainText
-            text: "esc  close" + (root.running ? "" : "   ⏎  " + Commons.I18n.t("speedtest.runAgain").toLowerCase())
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-          }
+          Item { Layout.fillWidth: true }
 
           Button {
             text: Commons.I18n.t("speedtest.runAgain")
@@ -299,6 +290,18 @@ PanelWindow {
       Text {
         textFormat: Text.PlainText
         text: root.unit
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        Layout.alignment: Qt.AlignBaseline
+      }
+
+      // Network rates also in bytes: 8 bits per byte, decimal megabytes.
+      Text {
+        textFormat: Text.PlainText
+        visible: root.unit === "Mbps"
+        readonly property real bytes: meter.reading / 8
+        text: "/ " + Commons.I18n.formatNumber(bytes, bytes < 10 ? 1 : 0) + " MB/s"
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
