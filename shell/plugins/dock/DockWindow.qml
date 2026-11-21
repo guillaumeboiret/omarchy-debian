@@ -134,6 +134,9 @@ PanelWindow {
     return Math.max(0, Math.min(count, Math.round((along - first) / window.slotSize)))
   }
   property var menuItem: null
+  // Debian port: the app slot under the pointer, whose name shows in a label
+  // inward of the dock, like the macOS dock.
+  property Item hoverSlot: null
   property Item menuSlot: null
   // The apps button's menu: where the dock sits and whether it hides.
   property bool settingsMenu: false
@@ -445,6 +448,12 @@ PanelWindow {
 
     z: lifted ? 1 : 0
 
+    onHoveredChanged: {
+      if (appSlot.hovered) window.hoverSlot = appSlot
+      else if (window.hoverSlot === appSlot) window.hoverSlot = null
+    }
+    Component.onDestruction: if (window.hoverSlot === appSlot) window.hoverSlot = null
+
     // The slot, and the pointer handling in it, stays where it is; only the
     // icon moves. Reading the pointer through a slot that moves with it would
     // feed each move back into the next.
@@ -586,6 +595,39 @@ PanelWindow {
       duration: Style.duration(250)
       easing.type: Easing.OutCubic
       onFinished: previous.source = ""
+    }
+  }
+
+  // Debian port: the hovered app's name, inward of its icon. Drawn inside the
+  // room the window keeps for menus, so it is never clipped, and left out of
+  // the input mask, so it never takes the pointer.
+  BorderSurface {
+    id: nameLabel
+
+    readonly property var item: window.hoverSlot ? window.hoverSlot.modelData : null
+    readonly property var entry: item && window.dock ? window.dock.entryFor(item) : null
+    readonly property string name: entry && entry.name ? entry.name : (item ? item.key : "")
+
+    visible: window.contentShown && !!item && name !== "" && !window.menuOpen && !window.dragging
+    width: nameText.implicitWidth
+    height: nameText.implicitHeight
+    x: window.popupX(window.hoverSlot, nameLabel)
+    y: window.popupY(window.hoverSlot, nameLabel)
+    radius: Style.cornerRadius
+    color: Commons.Color.tooltip.background
+    borderSpec: Border.surfaceSpec("tooltip", "border", Commons.Color.tooltip.border, Style.normalBorderWidth)
+
+    Text {
+      id: nameText
+      textFormat: Text.PlainText
+      text: nameLabel.name
+      color: Commons.Color.tooltip.text
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
+      leftPadding: Border.left(nameLabel.borderSpec) + Style.spacing.controlPaddingX
+      rightPadding: Border.right(nameLabel.borderSpec) + Style.spacing.controlPaddingX
+      topPadding: Border.top(nameLabel.borderSpec) + Style.spacing.controlPaddingY
+      bottomPadding: Border.bottom(nameLabel.borderSpec) + Style.spacing.controlPaddingY
     }
   }
 
