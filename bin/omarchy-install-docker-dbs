@@ -4,6 +4,10 @@
 # omarchy:requires-sudo=true
 
 options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "MSSQL")
+# Debian port: Microsoft publishes the SQL Server image for x86_64 only.
+if omarchy-hw-aarch64; then
+  options=("${options[@]/MSSQL}")
+fi
 
 if (( $# == 0 )); then
   choices=$(printf "%s\n" "${options[@]}" | gum choose --header "$(omarchy-i18n docker.selectDatabase)") || exit 130
