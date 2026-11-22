@@ -27,7 +27,6 @@ require("default.hypr.looknfeel")
 require("default.hypr.qconsole")
 require("default.hypr.input")
 require("default.hypr.windows")
-require("default.hypr.notch-fullscreen")  -- Debian port: full screen below an Apple notch
 require("default.hypr.pop")
 require("default.hypr.dictation-backend")
 
