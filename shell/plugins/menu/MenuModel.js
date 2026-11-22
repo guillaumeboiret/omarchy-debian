@@ -538,9 +538,18 @@ function guardPackageSnapshot() {
     + 'fi\n'
 }
 
+// Debian port: no pacman there. The port's package backend lists every name its
+// omarchy-pkg-present answers yes to (apt, Flatpak, Omarchy apps, fonts) in ~50ms,
+// so the set is built fresh each time instead of cached.
+function guardDebianPackageSnapshot() {
+  return 'mapfile -t __omarchy_pkg_names < <("$OMARCHY_PATH/debian/omarchy-debian-pkg" snapshot 2>/dev/null)\n'
+}
+
 function guardHelpers() {
   return 'declare -A __omarchy_pkgs=()\n'
+    + 'if [[ -f /etc/debian_version ]]; then\n' + guardDebianPackageSnapshot() + 'else\n'
     + guardPackageSnapshot()
+    + 'fi\n'
     + 'for __omarchy_pkg in "${__omarchy_pkg_names[@]}"; do __omarchy_pkgs[$__omarchy_pkg]=1; done\n'
     + '__omarchy_pkg_has() { [[ -n ${__omarchy_pkgs[$1]-} ]] && return 0; '
     + '[[ $1 == *[\\<\\>=]* ]] && { pacman -Q "$1" &>/dev/null; return; }; return 1; }\n'

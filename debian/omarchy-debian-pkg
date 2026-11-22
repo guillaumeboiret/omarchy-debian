@@ -7,6 +7,7 @@
 #   omarchy-debian-pkg present <pkg>…       exit 0 if all installed
 #   omarchy-debian-pkg available <pkg>…     exit 0 unless pkgmap marks one none: (unavailable)
 #   omarchy-debian-pkg missing <pkg>…       exit 0 if any is missing
+#   omarchy-debian-pkg snapshot             every name present answers yes to (the menu's guard set)
 #   omarchy-debian-pkg drop <pkg>…          remove the installed ones
 #   omarchy-debian-pkg install|aur-install  fuzzy picker: Debian packages / Omarchy apps
 #   omarchy-debian-pkg remove               fuzzy picker over installed packages
@@ -45,6 +46,39 @@ is_present() {
     nerdfont) [[ -d $(font_dir "$target") ]] ;;
     *) return 1 ;;
   esac
+}
+
+# Every name is_present answers yes to, one per line, in one pass: the menu batches its
+# omarchy-pkg-present guards against this set (pacman's on Arch) instead of forking per guard.
+# Same rules as resolve: a pkgmap line decides its name; otherwise a recipe makes it an app;
+# otherwise the Debian package of that name.
+snapshot() {
+  local installed_apt installed_flatpak recipes built fonts
+  installed_apt=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 == "ii" { print $2 }')
+  installed_flatpak=$(flatpak list --app --columns=application 2>/dev/null)
+  recipes=$( { command ls "$PKGS"; command ls "$DEB/recipes" | sed -n 's/\.PKGBUILD$//p'; } 2>/dev/null)
+  built=$(command ls "$STATE" 2>/dev/null | sed -n 's/\.version$//p')
+  fonts=$(command ls "$HOME/.local/share/fonts/NerdFonts" 2>/dev/null)
+  awk -v apt_list="$installed_apt" -v flatpak_list="$installed_flatpak" -v recipe_list="$recipes" \
+      -v built_list="$built" -v font_list="$fonts" '
+    function set(list, arr,   n, i, x) { n = split(list, x, "\n"); for (i = 1; i <= n; i++) if (x[i] != "") arr[x[i]] = 1 }
+    BEGIN { set(apt_list, apt); set(flatpak_list, flatpak); set(recipe_list, recipe); set(built_list, built); set(font_list, font) }
+    /^[[:space:]]*(#|$)/ { next }
+    {
+      name = $1; listed[name] = 1
+      spec = $0; sub(/^[^[:space:]]+[[:space:]]+/, "", spec)
+      kind = spec; sub(/:.*/, "", kind); target = spec; sub(/^[^:]*:/, "", target)
+      ok = 0
+      if (kind == "apt") { ok = 1; m = split(target, t, " "); for (i = 1; i <= m; i++) if (!(t[i] in apt)) ok = 0 }
+      else if (kind == "flatpak") { id = target; sub(/=.*/, "", id); ok = (id in flatpak) }
+      else if (kind == "app") ok = (target in built)
+      else if (kind == "nerdfont") ok = (target in font)
+      if (ok) print name
+    }
+    END {
+      for (p in apt) if (!(p in listed) && !(p in recipe)) print p
+      for (p in built) if (!(p in listed) && (p in recipe)) print p
+    }' "$MAP"
 }
 
 # A command-line launcher for a Flatpak app, so Omarchy can call it by its usual name.
@@ -124,6 +158,7 @@ fzf_pick() {
 case ${1:-} in
   add|aur-add) shift; cmd_add "$@" ;;
   present) shift; for p in "$@"; do is_present "$p" || exit 1; done ;;
+  snapshot) snapshot ;;
   # Only what pkgmap marks none: is unavailable; anything else may still resolve when installed.
   available) shift; for p in "$@"; do ! awk -v n="$p" '$1 == n && $2 ~ /^none:/ { found = 1 } END { exit !found }' "$MAP" || exit 1; done ;;
   missing) shift; for p in "$@"; do is_present "$p" || exit 0; done; exit 1 ;;
