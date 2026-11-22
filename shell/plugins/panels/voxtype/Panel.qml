@@ -67,7 +67,10 @@ Panel {
   }
   readonly property string cursorAction: cursorActive && cursorIndex < actions.length ? actions[cursorIndex] : ""
 
-  readonly property string barGlyph: !running ? "󰍭" : (recording ? "󰑊" : (transcribing ? "󰔟" : "󰍬"))
+  // Debian port (local choice): the bar keeps one mic glyph and shows the state
+  // by colour, as the tray icon did: red while recording, the warning colour
+  // pulsing while transcribing.
+  readonly property string barGlyph: running ? "󰍬" : "󰍭"
   readonly property string heroGlyph: !running ? "󰍭" : (recording ? "󰑊" : (transcribing ? "󰔟" : "󰍬"))
   readonly property string stateText: {
     if (!running) return Commons.I18n.t("voxtype.stopped")
@@ -197,11 +200,20 @@ Panel {
     bar: root.bar
     text: root.barGlyph
     active: root.busy
+    activeColor: root.recording ? root.urgent : Commons.Color.warning
     tooltipText: root.trayTitle !== "" ? root.trayTitle : Commons.I18n.t("voxtype.title")
     onPressed: function(b) {
       if (b === Qt.MiddleButton) root.trigger("record")
       else if (b === Qt.RightButton && root.busy) root.trigger("cancel")
       else root.toggle()
+    }
+
+    SequentialAnimation on opacity {
+      running: root.transcribing
+      loops: Animation.Infinite
+      onRunningChanged: if (!running) button.opacity = 1
+      NumberAnimation { to: 0.35; duration: 500; easing.type: Easing.InOutQuad }
+      NumberAnimation { to: 1; duration: 500; easing.type: Easing.InOutQuad }
     }
   }
 
