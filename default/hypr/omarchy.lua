@@ -30,6 +30,7 @@ require("default.hypr.qconsole")
 require("default.hypr.input")
 require("default.hypr.windows")
 require("default.hypr.notch-fullscreen")  -- Debian port: full screen below an Apple notch
+require("default.hypr.local-build-check")  -- Debian port: notice when apt replaces the local Hyprland build
 require("default.hypr.pop")
 require("default.hypr.dictation-backend")
 

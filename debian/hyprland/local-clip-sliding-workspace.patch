@@ -1,0 +1,137 @@
+Description: Clip windows of a sliding workspace to that workspace's slot
+ While a workspace slides (workspace switch animation or swipe gesture),
+ Hyprland draws all of its windows at their position plus the slide offset,
+ without clipping them to the workspace's own area of the monitor. Scrolling
+ layout columns that sit off-screen therefore slide in over the neighbouring
+ workspace. This skips windows entirely outside the slot and clips the
+ surface, border and shadow of the others to it. Only regular (non-special)
+ workspaces on their own monitor are affected, and only while the render
+ offset is non-zero; nothing changes at rest.
+Author: local build (omarchy Debian port)
+Bug: https://github.com/hyprwm/Hyprland/issues/15725
+Forwarded: no
+Last-Update: 2026-11-22
+---
+--- a/src/render/SlideClip.hpp
++++ b/src/render/SlideClip.hpp
+@@ -0,0 +1,33 @@
++#pragma once
++
++// Debian local patch: while a workspace slides (a workspace switch animation or
++// a swipe gesture), clip its windows to that workspace's own slot on the
++// monitor. Without this, scrolling-layout columns that sit off-screen slide
++// into view over the neighbouring workspace.
++
++#include "../Compositor.hpp"
++#include "../desktop/Workspace.hpp"
++#include "../desktop/view/Window.hpp"
++#include "../helpers/Monitor.hpp"
++
++#include <optional>
++#include <hyprutils/utils/ScopeGuard.hpp>
++
++namespace Render {
++    // The clip box (monitor-local, scaled) for a window rendered on pMonitor, or
++    // nothing when its workspace is not sliding there.
++    inline std::optional<CBox> slidingWorkspaceClip(PHLWINDOW pWindow, PHLMONITOR pMonitor) {
++        if (!pWindow || !pMonitor || pWindow->m_pinned)
++            return std::nullopt;
++
++        const auto PWORKSPACE = pWindow->m_workspace;
++        if (!PWORKSPACE || PWORKSPACE->m_isSpecialWorkspace || PWORKSPACE->m_monitor != pMonitor)
++            return std::nullopt;
++
++        const Vector2D OFFSET = PWORKSPACE->m_renderOffset->value();
++        if (OFFSET.x == 0 && OFFSET.y == 0)
++            return std::nullopt;
++
++        return CBox{OFFSET, pMonitor->m_size}.scale(pMonitor->m_scale);
++    }
++}
+--- a/src/render/Renderer.cpp
++++ b/src/render/Renderer.cpp
+@@ -1,4 +1,5 @@
+ #include "Renderer.hpp"
++#include "SlideClip.hpp"
+ #include "../Compositor.hpp"
+ #include "../helpers/math/Math.hpp"
+ #include <algorithm>
+@@ -543,6 +544,18 @@
+ 
+     TRACY_GPU_ZONE("RenderWindow");
+ 
++    // Debian local patch: a window entirely outside its sliding workspace's slot
++    // (an off-screen scrolling column) is not drawn over the neighbouring one.
++    if (!ignorePosition && !standalone) {
++        if (const auto SLIDECLIP = Render::slidingWorkspaceClip(pWindow, pMonitor); SLIDECLIP) {
++            const auto FULLBOX = pWindow->getFullWindowBoundingBox()
++                                     .translate(-pMonitor->m_position + pWindow->m_workspace->m_renderOffset->value() + pWindow->m_floatingOffset)
++                                     .scale(pMonitor->m_scale);
++            if (FULLBOX.intersection(*SLIDECLIP).empty())
++                return;
++        }
++    }
++
+     const auto                       PWORKSPACE = pWindow->m_workspace;
+     const auto                       REALPOS    = pWindow->m_realPosition->value() + (pWindow->m_pinned ? Vector2D{} : PWORKSPACE->m_renderOffset->value());
+     static auto                      PDIMAROUND = CConfigValue<Config::FLOAT>("decoration:dim_around");
+@@ -620,6 +633,12 @@
+         renderdata.clipBox = rg.getExtents();
+     }
+ 
++    // Debian local patch: keep the window inside its sliding workspace's slot.
++    if (!ignorePosition && !standalone) {
++        if (const auto SLIDECLIP = Render::slidingWorkspaceClip(pWindow, pMonitor); SLIDECLIP)
++            renderdata.clipBox = renderdata.clipBox.empty() ? *SLIDECLIP : renderdata.clipBox.intersection(*SLIDECLIP);
++    }
++
+     // render window decorations first, if not fullscreen full
+     if (mode == RENDER_PASS_ALL || mode == RENDER_PASS_MAIN) {
+ 
+--- a/src/render/gl/GLElementRenderer.cpp
++++ b/src/render/gl/GLElementRenderer.cpp
+@@ -1,4 +1,5 @@
+ #include "GLElementRenderer.hpp"
++#include "../SlideClip.hpp"
+ #include "../Renderer.hpp"
+ #include "../decorations/CHyprDropShadowDecoration.hpp"
+ #include "../OpenGL.hpp"
+@@ -9,6 +10,14 @@
+ 
+ void CGLElementRenderer::draw(WP<CBorderPassElement> element, const CRegion& damage) {
+     const auto m_data = element->m_data;
++
++    // Debian local patch: keep the border inside its sliding workspace's slot.
++    auto&      renderData = g_pHyprRenderer->m_renderData;
++    const auto OLDCLIP    = renderData.clipBox;
++    if (const auto SLIDECLIP = Render::slidingWorkspaceClip(m_data.window.lock(), renderData.pMonitor.lock()); SLIDECLIP)
++        renderData.clipBox = *SLIDECLIP;
++    Hyprutils::Utils::CScopeGuard restoreClip = {[&renderData, OLDCLIP]() { renderData.clipBox = OLDCLIP; }};
++
+     if (m_data.hasGrad2)
+         g_pHyprOpenGL->renderBorder(
+             m_data.box, m_data.grad1, m_data.grad2, m_data.lerp,
+--- a/src/render/decorations/CHyprDropShadowDecoration.cpp
++++ b/src/render/decorations/CHyprDropShadowDecoration.cpp
+@@ -4,6 +4,7 @@
+ #include "../../config/ConfigValue.hpp"
+ #include "../pass/ShadowPassElement.hpp"
+ #include "../Renderer.hpp"
++#include "../SlideClip.hpp"
+ #include "../pass/RectPassElement.hpp"
+ #include "../pass/TextureMatteElement.hpp"
+ 
+@@ -190,6 +191,13 @@
+ 
+     g_pHyprRenderer->disableScissor();
+ 
++    // Debian local patch: keep the shadow inside its sliding workspace's slot.
++    auto&      renderData = g_pHyprRenderer->m_renderData;
++    const auto OLDCLIP    = renderData.clipBox;
++    if (const auto SLIDECLIP = Render::slidingWorkspaceClip(PWINDOW, pMonitor); SLIDECLIP)
++        renderData.clipBox = *SLIDECLIP;
++    Hyprutils::Utils::CScopeGuard restoreClip = {[&renderData, OLDCLIP]() { renderData.clipBox = OLDCLIP; }};
++
+     drawShadowInternal(data.fullBox, data.rounding * pMonitor->m_scale, data.roundingPower, data.size * pMonitor->m_scale, PWINDOW->m_realShadowColor->value(), a);
+ 
+     reposition();
