@@ -28,7 +28,7 @@ ghostty                    app:ghostty
 # Apps
 signal-desktop             flatpak:org.signal.Signal=signal-desktop
 typora                     flatpak:io.typora.Typora=typora
-1password                  none:1Password has no Debian ARM64 package; Bitwarden is on Flathub (com.bitwarden.desktop)
+1password                  none:1Password has no Debian ARM64 package; Bitwarden is in Install > Service
 1password-cli              none:1Password CLI has no Debian ARM64 package
 dropbox                    none:Dropbox has no Linux ARM64 client
 dropbox-cli                none:Dropbox has no Linux ARM64 client
