@@ -157,9 +157,10 @@ build_app() {
   # subshells included. A fresh bash process starts clean, so a failed step really stops.
   local rc=0
   set +e
-  # Recipes that need Go (not in Debian's base set) get a current toolchain from mise for the build only.
+  # Recipes that need Go (not in Debian's base set) get a current toolchain from mise for the build only
+  # (asked by running it: a mise shim with no version set is a `go` that only errors).
   local runner=()
-  if grep -qE "^makedepends=.*['\"( ]go['\") ]" "$pkgfile" && ! command -v go >/dev/null && command -v mise >/dev/null; then
+  if grep -qE "^makedepends=.*['\"( ]go['\") ]" "$pkgfile" && ! go version >/dev/null 2>&1 && command -v mise >/dev/null; then
     runner=(mise exec go@latest --)
   fi
   # Recipes that run npm (hermes-desktop) need Node ≥ 22 and a newer npm than Debian 13's 20/9 → mise's.
