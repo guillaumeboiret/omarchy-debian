@@ -310,10 +310,10 @@ case ${1:-help} in
   __build-steps) shift; build_steps "$@" ;;
   update)
     update_omarchy
-    # Passwordless sudo's root-owned helper copy (system-setup step 29) doesn't follow the checkout.
-    for f in omarchy-sudo-passwordless omarchy-security-functions; do
+    # The root-owned helper copies (system-setup steps 10 and 29) don't follow the checkout.
+    for f in omarchy-sudo-passwordless omarchy-security-functions omarchy-theme-set-browser-policy omarchy-install-chromium-claude; do
       if ! cmp -s "$OM/bin/$f" "/usr/bin/$f"; then
-        warn "passwordless sudo helper changed — run: sudo bash $OM/debian/system-setup.sh"
+        warn "a root-owned Omarchy helper changed — run: sudo bash $OM/debian/system-setup.sh"
         break
       fi
     done

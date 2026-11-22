@@ -7,7 +7,13 @@ echo "Installing ONCE..."
 omarchy-pkg-add once-bin
 
 echo "Enabling ONCE background service..."
+# Debian port: the app is built into ~/.local, where system systemd doesn't look for units, and
+# sudo's secure_path doesn't include ~/.local/bin.
+if [[ -f /etc/debian_version ]]; then
+  sudo install -m 644 "$HOME/.local/lib/systemd/system/once-background.service" /etc/systemd/system/once-background.service
+  sudo systemctl daemon-reload
+fi
 sudo systemctl enable --now once-background.service
 
 echo -e "\nLaunching ONCE..."
-sudo once
+sudo "$(command -v once)"

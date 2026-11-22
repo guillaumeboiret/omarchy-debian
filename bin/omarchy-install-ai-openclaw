@@ -14,6 +14,10 @@ omarchy-install-openclaw-cli --now
 # inside the package, so nothing is fetched here.
 # The package before the seed kept the icon inside OpenClaw itself.
 icon=/usr/share/openclaw/openclaw.png
+# Debian port: omarchy-debian builds the package into ~/.local.
+if [[ ! -e $icon && -e $HOME/.local/share/openclaw/openclaw.png ]]; then
+  icon="$HOME/.local/share/openclaw/openclaw.png"
+fi
 [[ -r $icon ]] || icon=/usr/lib/node_modules/openclaw/dist/control-ui/apple-touch-icon.png
 echo "Installing the OpenClaw web app..."
 omarchy-webapp-install OpenClaw "http://127.0.0.1:18789" \

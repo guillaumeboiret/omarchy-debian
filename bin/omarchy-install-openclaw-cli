@@ -94,6 +94,7 @@ path_clear() {
 # OpenClaw a machine has: --check takes it as installed, and --now installs it
 # and stops there.
 package_is_openclaw() {
+  locate_package
   [[ ! -r $seed/install-cli.sh || ! -r $seed/openclaw.tgz ]]
 }
 
@@ -107,6 +108,15 @@ moved_before() {
 # While the package is OpenClaw itself its command is the one OpenClaw, and
 # anything a session would run ahead of it is refused as it is for the runtime.
 package_command=/usr/bin/openclaw
+
+# Debian port: omarchy-debian builds the package into ~/.local. Asked whenever the package is
+# consulted, since it may only just have been installed.
+locate_package() {
+  if [[ ! -e $seed && -e $HOME/.local/share/openclaw ]]; then
+    seed="$HOME/.local/share/openclaw"
+    package_command="$HOME/.local/bin/openclaw"
+  fi
+}
 
 package_shadowed() {
   local found

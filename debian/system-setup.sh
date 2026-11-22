@@ -59,6 +59,8 @@ update-alternatives --set lua-interpreter /usr/bin/lua5.4
 # 10. Browser theme colour (Omarchy's narrow passwordless rule). A root-owned COPY, never a link
 #     into the user-writable tree; the script pins PATH and accepts only a 6-hex-digit colour.
 install -o root -g root -m 755 "$OM/bin/omarchy-theme-set-browser-policy" /usr/bin/omarchy-theme-set-browser-policy
+#     Same for the Claude extension installer, which elevates only its packaged /usr/bin copy.
+install -o root -g root -m 755 "$OM/bin/omarchy-install-chromium-claude" /usr/bin/omarchy-install-chromium-claude
 sed 's/^%wheel /%sudo /' "$OM/etc/sudoers.d/omarchy-theme-browser" > /tmp/omarchy-theme-browser.sudoers
 if visudo -cf /tmp/omarchy-theme-browser.sudoers >/dev/null; then
   install -o root -g root -m 440 /tmp/omarchy-theme-browser.sudoers /etc/sudoers.d/omarchy-theme-browser
