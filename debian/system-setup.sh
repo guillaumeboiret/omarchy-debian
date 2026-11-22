@@ -37,7 +37,9 @@ apt-get install -y cargo rustc meson ninja-build extra-cmake-modules \
   libnss3-dev libpulse-dev libtesseract-dev libleptonica-dev libmpv-dev libsource-highlight-dev \
   libavcodec-dev libavformat-dev libswscale-dev libturbojpeg0-dev \
   qml6-module-qtquick-pdf xournalpp git-delta librsvg2-bin ydotool acpi gawk \
-  libonig-dev  # Ghostty (system oniguruma; GTK4/libadwaita/gtk4-layer-shell dev files come with the shell's)
+  libonig-dev \
+  libarchive-tools ostree patchelf  # bsdtar/ostree/patchelf: the Electron app recipes in Install (Slack, Notion, Cursor…)
+# (libonig-dev: Ghostty's system oniguruma; GTK4/libadwaita/gtk4-layer-shell dev files come with the shell's)
 
 # 7. Omarchy calls its screensaver at a fixed /usr/lib path; the built app lives in ~/.local/lib
 if [ ! -e /usr/lib/omarchy-screensaver ] || [ -L /usr/lib/omarchy-screensaver ]; then

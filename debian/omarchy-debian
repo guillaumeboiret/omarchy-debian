@@ -274,7 +274,8 @@ backup_port() {
 
 build_steps() {
   local name=$1 dir=$2 pkgfile=$3 build=$4
-  set -e +u
+  # Like makepkg: errexit, but no nounset or pipefail (recipes pipe readelf over non-ELF files, etc.).
+  set -e +u +o pipefail
   export PATH="$PREFIX/bin:$PATH" CARCH startdir="$dir" srcdir="$build/src" pkgdir="$build/pkg" MAKEFLAGS="-j$(nproc)"
   cd "$srcdir"
   # shellcheck disable=SC1090
