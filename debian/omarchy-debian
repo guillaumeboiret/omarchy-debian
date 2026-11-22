@@ -98,6 +98,21 @@ fetch_sources() {  # $1=name  (runs in $srcdir, PKGBUILD already sourced)
 
 relocate() {  # move $pkgdir/usr → ~/.local, fixing absolute /usr paths
   local name=$1 pkgdir=$2 list="$DB/$1.files"
+  # Electron apps install under /opt/<app>: move each to usr/lib/<app> and point its references and
+  # links there, so the /usr handling below carries it into ~/.local/lib/<app>. Names may hold spaces.
+  local o n
+  for o in "$pkgdir"/opt/*; do
+    [[ -e $o ]] || continue
+    n=${o##*/}
+    [[ -e $pkgdir/usr/lib/$n ]] && { warn "$name ships both /opt/$n and /usr/lib/$n"; return 1; }
+    mkdir -p "$pkgdir/usr/lib"
+    mv "$o" "$pkgdir/usr/lib/$n"
+    grep -rlIZF -e "/opt/$n" "$pkgdir/usr" 2>/dev/null | N=$n xargs -0 -r perl -pi -e 's#\Q/opt/$ENV{N}\E#/usr/lib/$ENV{N}#g'
+    find "$pkgdir/usr" -type l -print0 | while IFS= read -r -d '' l; do
+      t=$(readlink "$l"); [[ $t == "/opt/$n" || $t == "/opt/$n/"* ]] && ln -sfn "/usr/lib/${t#/opt/}" "$l"
+    done
+  done
+  rmdir "$pkgdir/opt" 2>/dev/null || true
   [[ -d $pkgdir/usr ]] || { warn "$name installed nothing under /usr"; return; }
   # Rewrite absolute /usr/… paths inside desktop files, services and symlinks
   find "$pkgdir/usr" -type f \( -name '*.desktop' -o -name '*.service' -o -name '*.portal' \) -print0 |
