@@ -2,7 +2,10 @@
 
 # omarchy:summary=Open Voxtype configuration
 
-set -e
+# Voxtype's settings TUI needs more room than the standard 875x600 float, which
+# clipped and rewrapped it, so it gets its own app id and window size
+# (default/hypr/apps/system.lua). No shell restart afterwards: the Voxtype bar
+# panel reads its state each time it opens.
+source omarchy-restart-gum
 
-omarchy-launch-floating-terminal-with-presentation "voxtype configure"
-omarchy-restart-shell
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.voxtype-config --title="Voxtype Settings" -e voxtype configure

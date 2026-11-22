@@ -27,6 +27,12 @@ o.window("org.omarchy.about", { float = true })
 o.window("org.omarchy.about", { center = true })
 o.window("org.omarchy.about", { size = { 920, 480 } })
 
+-- Voxtype's settings TUI (omarchy-voxtype-config) lays out a sidebar and two
+-- columns of boxes; at the standard float size it clipped and rewrapped.
+o.window("org.omarchy.voxtype-config", { float = true })
+o.window("org.omarchy.voxtype-config", { center = true })
+o.window("org.omarchy.voxtype-config", { size = { 1240, 780 } })
+
 -- Files' Space preview floats over the file manager, at the size it picks
 -- to fit the screen.
 o.window("folio-preview", { float = true })
