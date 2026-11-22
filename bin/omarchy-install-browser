@@ -30,11 +30,24 @@ link_widevine_cdm() {
   fi
 }
 
+# Debian port: Chrome and Brave are Flatpaks there, which read their flags file from their own
+# config dir under ~/.var/app instead of ~/.config.
+flags_file() {
+  if [[ -f /etc/debian_version && -n $2 ]]; then
+    echo "$HOME/.var/app/$2/config/$1"
+  else
+    echo "$HOME/.config/$1"
+  fi
+}
+
 copy_chromium_flags() {
-  mkdir -p ~/.config
+  mkdir -p "$(dirname "$1")"
   cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"
-  omarchy-install-chromium-copy-url
-  omarchy-install-chromium-ytdlp
+  # Debian port: a Flatpak browser can't reach the native messaging hosts these two install.
+  if [[ $1 != "$HOME"/.var/app/* ]]; then
+    omarchy-install-chromium-copy-url
+    omarchy-install-chromium-ytdlp
+  fi
   omarchy-install-video-decode
   omarchy-install-camera
 }
@@ -60,7 +73,7 @@ chrome)
   omarchy-pkg-add google-chrome
 
   setup_chromium_policy_directory /etc/opt/chrome/policies/managed
-  copy_chromium_flags ~/.config/chrome-flags.conf
+  copy_chromium_flags "$(flags_file chrome-flags.conf com.google.Chrome)"
   omarchy-theme-set-browser
   omarchy-lifecycle-dispatch post-install chrome
   announce_browser_installed "Chrome"
@@ -80,7 +93,7 @@ brave)
   omarchy-pkg-aur-add brave-bin || exit 1
 
   setup_chromium_policy_directory /etc/brave/policies/managed
-  copy_chromium_flags ~/.config/brave-flags.conf
+  copy_chromium_flags "$(flags_file brave-flags.conf com.brave.Browser)"
   link_widevine_cdm brave-bin
   omarchy-theme-set-browser
   omarchy-lifecycle-dispatch post-install brave
@@ -110,7 +123,10 @@ zen)
   echo "Installing Zen..."
   omarchy-pkg-aur-add zen-browser-bin || exit 1
 
-  browser_policy_setup_firefox_distribution /opt/zen-browser/distribution
+  # Debian port: Zen is the Flatpak there, which can't see /opt; it would only leave a root-owned dir.
+  if [[ ! -f /etc/debian_version ]]; then
+    browser_policy_setup_firefox_distribution /opt/zen-browser/distribution
+  fi
   setup_firefox_wayland
   omarchy-lifecycle-dispatch post-install zen
   announce_browser_installed "Zen"

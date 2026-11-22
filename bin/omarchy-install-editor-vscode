@@ -5,7 +5,14 @@
 echo "Installing VSCode..."
 omarchy-pkg-add visual-studio-code-bin
 
-mkdir -p ~/.vscode ~/.config/Code/User
+# Debian port: VS Code is the Flatpak there, which keeps its settings under ~/.var/app.
+settings_dir=~/.config/Code/User
+desktop_id=code
+if command -v flatpak >/dev/null && flatpak info --user com.visualstudio.code >/dev/null 2>&1; then
+  settings_dir=~/.var/app/com.visualstudio.code/config/Code/User
+  desktop_id=com.visualstudio.code
+fi
+mkdir -p ~/.vscode "$settings_dir"
 
 cat > ~/.vscode/argv.json << 'EOF'
 // This configuration file allows you to pass permanent command line arguments to VS Code.
@@ -21,9 +28,9 @@ cat > ~/.vscode/argv.json << 'EOF'
 EOF
 
 # Ensure VSC's own auto-update feature is turned off
-printf '{\n  "update.mode": "none"\n}\n' > ~/.config/Code/User/settings.json
+printf '{\n  "update.mode": "none"\n}\n' > "$settings_dir/settings.json"
 
 # Apply Omarchy theme to VSCode
 omarchy-theme-set-vscode
 
-setsid uwsm-app -- gtk-launch code >/dev/null 2>&1 &
+setsid uwsm-app -- gtk-launch "$desktop_id" >/dev/null 2>&1 &

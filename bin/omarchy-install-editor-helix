@@ -23,6 +23,7 @@ if [[ ! -e $HOME/.local/state/omarchy/current/theme/helix.toml ]]; then
 fi
 
 # Arch-based distros ship Helix as 'helix' rather than the upstream 'hx'.
-if ! grep -q '^alias hx="helix"' ~/.bashrc 2>/dev/null; then
+# Debian port: Debian's package already names the command hx (there is no helix binary).
+if [[ ! -f /etc/debian_version ]] && ! grep -q '^alias hx="helix"' ~/.bashrc 2>/dev/null; then
   echo 'alias hx="helix"' >>~/.bashrc
 fi

@@ -37,6 +37,16 @@ edge) profile=microsoft-edge; flags=microsoft-edge-stable-flags.conf ;;
 esac
 
 browser=$1
+# Debian port: Chrome and Brave are user Flatpaks there; their sandbox reads neither ~/.config's flags
+# and native hosts nor Omarchy's extension copies, so there is nothing this can set up for them.
+case $browser in
+chrome) flatpak_id=com.google.Chrome ;;
+brave | brave-origin) flatpak_id=com.brave.Browser ;;
+*) flatpak_id="" ;;
+esac
+if [[ -n $flatpak_id ]] && command -v flatpak >/dev/null && flatpak info --user "$flatpak_id" >/dev/null 2>&1; then
+  exit 0
+fi
 chrome_policy_dir=/etc/opt/chrome/policies/managed
 host_dir=$HOME/.config/$profile/NativeMessagingHosts
 flags_file=$HOME/.config/$flags

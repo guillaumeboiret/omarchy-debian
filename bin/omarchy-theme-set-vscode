@@ -190,8 +190,14 @@ set_theme() {
   fi
 }
 
+# Debian port: VS Code is the Flatpak there, which keeps its settings under ~/.var/app.
+code_settings="$HOME/.config/Code/User/settings.json"
+if command -v flatpak >/dev/null && flatpak info --user com.visualstudio.code >/dev/null 2>&1; then
+  code_settings="$HOME/.var/app/com.visualstudio.code/config/Code/User/settings.json"
+fi
+
 if ! omarchy-toggle-enabled skip-vscode-theme-changes; then
-  set_theme "code" "$HOME/.config/Code/User/settings.json" "$HOME/.vscode/extensions"
+  set_theme "code" "$code_settings" "$HOME/.vscode/extensions"
 fi
 if ! omarchy-toggle-enabled skip-vscode-insiders-theme-changes; then
   set_theme "code-insiders" "$HOME/.config/Code - Insiders/User/settings.json" "$HOME/.vscode-insiders/extensions"
@@ -201,4 +207,9 @@ if ! omarchy-toggle-enabled skip-codium-theme-changes; then
 fi
 if ! omarchy-toggle-enabled skip-cursor-theme-changes; then
   set_theme "/usr/bin/cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.cursor/extensions"
+  # Debian port: omarchy-debian builds Cursor into ~/.local (an absolute path, like the probe above,
+  # so the Cursor Agent shim on PATH is never mistaken for the editor).
+  if [[ -f /etc/debian_version ]]; then
+    set_theme "$HOME/.local/bin/cursor" "$HOME/.config/Cursor/User/settings.json" "$HOME/.cursor/extensions"
+  fi
 fi
