@@ -9,6 +9,8 @@ require("default.hypr.autostart")
 require("default.hypr.wide-gamut")
 require("default.hypr.monitors")
 require("default.hypr.monitor-workspaces")
+-- Debian port: before the "Move window" mouse bind, whose press it must precede.
+require("default.hypr.scrolling-drop")
 if _G.omarchy_default_bindings ~= false then
   require("default.hypr.bindings.media")
   require("default.hypr.bindings.clipboard")
