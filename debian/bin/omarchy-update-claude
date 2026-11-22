@@ -1,73 +1,46 @@
 #!/bin/bash
 
-# omarchy:summary=Update Omarchy (Debian port) inside a Claude Code session, with the plain update as fallback
+# omarchy:summary=Open Claude Code to fix a failed Omarchy (Debian port) update from its log
+# omarchy:args=[log]
 #
-# Claude runs `omarchy-debian update` and fixes what breaks (a Debian patch that no longer
-# rebases, an app that stops building). The apt step needs a password, which Claude's tools
-# can't type, so it runs here in the terminal once Claude has finished.
-# No Claude, or Claude out of usage (checked before starting, or hit mid-session) → the
-# regular `omarchy-update` runs instead.
+# Called by omarchy-update when `omarchy-debian update` fails or warns. Claude can't run
+# (usage limit, login, network) → says so and leaves the fix for later; nothing else changes.
 
 set -uo pipefail
 
 OM=$OMARCHY_PATH
-STATE=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy
-STATUS=$STATE/update-claude.status
+log=${1:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update.log}
 
-say()  { printf '\e[1;32m==>\e[0;1m %s\e[0m\n' "$*"; }
 warn() { printf '\e[1;33m==>\e[0;1m %s\e[0m\n' "$*"; }
 
-plain_update() {
-  warn "$1 — running the regular update instead."
-  exec omarchy-update
-}
+if ! command -v claude >/dev/null; then
+  warn "Claude Code isn't installed — fix it by hand (log: $log)."
+  exit 1
+fi
 
-command -v claude >/dev/null || plain_update "Claude Code isn't installed"
-
-# Preflight: one tiny request tells us whether this account can work right now.
-say "Checking Claude is available"
+# One tiny request tells us whether this account can work right now.
 reply=$(cd "$OM" && timeout 90 claude -p --output-format json "Reply with the single word OK." 2>&1)
 code=$?
 if (( code != 0 )) || ! jq -e '.is_error == false' <<<"$reply" >/dev/null 2>&1; then
   reason=$(jq -r '.result // empty' <<<"$reply" 2>/dev/null)
   [[ -n $reason ]] || reason=$(tail -n 3 <<<"$reply")
+  warn "Claude can't run right now (usage limit, login or network):"
   printf '    %s\n' "$reason"
-  plain_update "Claude can't run right now (usage limit, login or network)"
+  warn "Try again later with: omarchy-update-claude $log"
+  exit 1
 fi
 
-mkdir -p "$STATE"
-rm -f "$STATUS"
-
 prompt=$(cat <<EOF
-Update this Omarchy Debian port (the checkout in $OM; see the omarchy setup memory).
+The Omarchy Debian port update ($OM/debian/omarchy-debian update) just failed or warned. The full output is in $log — read it first (see the omarchy setup memory for the port layout).
 
-1. Run: $OM/debian/omarchy-debian update
-   Use a long timeout (app builds take many minutes); run it in the background and wait for it if needed.
-2. If it fails or warns, fix the cause and run it again until it passes cleanly:
-   - "a Debian patch no longer applies": rebase debian-port onto upstream yourself, resolve the conflicts so every Debian patch keeps doing its job on the new upstream code, verify the Hyprland config (Hyprland --verify-config), then push to the backup remote as the updater does.
-   - an app build failure: read ~/.cache/omarchy-debian/build/<app>/log and fix debian/patches/<app>.sh or the recipe.
-   - "a root-owned Omarchy helper changed" or anything else needing root: don't run sudo; tell me the exact command at the end.
-   Commit fixes on debian-port with "Debian port: ..." messages.
-3. Do NOT run apt or sudo — the terminal runs the apt upgrade after you, where I can type my password.
-4. When the Omarchy part has fully succeeded, run: echo ok > $STATUS
-   Then give me a short summary (what changed, what you fixed, any command I must run) and tell me to type /exit.
+Fix the cause, then rerun $OM/debian/omarchy-debian update (long timeout; builds take minutes) until it passes cleanly:
+- "a Debian patch no longer applies": rebase debian-port onto upstream yourself and resolve the conflicts so every Debian patch keeps doing its job on the new upstream code. Verify with Hyprland --verify-config. BEFORE committing the rebase or pushing to the backup remote, show me the conflict resolutions and wait for my OK.
+- an app build failure: read ~/.cache/omarchy-debian/build/<app>/log and fix debian/patches/<app>.sh or the recipe.
+- anything needing root: don't run sudo; give me the exact command at the end.
+Commit fixes on debian-port as "Debian port: ...". Don't run apt (the terminal does it after you).
+End with a short summary and tell me to type /exit.
 EOF
 )
 
-say "Starting Claude (type /exit when it's done; if Claude hits its usage limit, /exit and the regular update takes over)"
-(cd "$OM" && claude -n "Omarchy update" --permission-mode auto "$prompt")
-
-if [[ $(cat "$STATUS" 2>/dev/null) != ok ]]; then
-  echo
-  warn "Claude didn't finish the update."
-  read -rp "Run the regular update now? [Y/n] " answer
-  [[ $answer =~ ^[Nn] ]] && exit 1
-  exec omarchy-update
-fi
-rm -f "$STATUS"
-
-say "Updating Debian packages"
-sudo apt update && sudo apt upgrade
-status=$?
-omarchy-shell -q omarchy.system-update refresh >/dev/null 2>&1 || true
-exit $status
+warn "Starting Claude — type /exit when it's done (or if it runs out of usage)."
+cd "$OM" && claude -n "Omarchy update fix" --permission-mode auto "$prompt"

@@ -18,7 +18,24 @@ if [[ -f /etc/debian_version ]]; then
   ( while sleep 60; do kill -0 $$ 2>/dev/null && sudo -n true 2>/dev/null || exit 0; done ) &
   keepalive=$!
   trap 'kill "$keepalive" 2>/dev/null' EXIT
-  OMARCHY_DEBIAN_WITH_APT=1 "$OMARCHY_PATH/debian/omarchy-debian" update
+  # A failed or warning run (a patch that no longer rebases, an app that stops building)
+  # offers to open Claude on the log; Claude never runs when the update goes through.
+  log=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update.log
+  mkdir -p "${log%/*}"
+  set -o pipefail
+  if OMARCHY_DEBIAN_WITH_APT=1 "$OMARCHY_PATH/debian/omarchy-debian" update 2>&1 | tee "$log"; then
+    omarchy_ok=1
+  else
+    omarchy_ok=0
+  fi
+  if (( !omarchy_ok )) || grep -q '==> WARNING:' "$log"; then
+    if [[ ${1:-} != "-y" && -t 0 ]]; then
+      read -rp $'\nThe Omarchy part had problems. Open Claude to fix them? [Y/n] ' answer
+      [[ $answer =~ ^[Nn] ]] || omarchy-update-claude "$log" || true
+    else
+      echo "The Omarchy part had problems — run: omarchy-update-claude $log"
+    fi
+  fi
   printf '\e[1;32m==>\e[0;1m Updating Debian packages\e[0m\n'
   sudo apt update
   if [[ $1 == "-y" ]]; then
