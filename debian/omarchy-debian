@@ -147,6 +147,13 @@ build_app() {
   if grep -qE "^makedepends=.*['\"( ]go['\") ]" "$pkgfile" && ! command -v go >/dev/null && command -v mise >/dev/null; then
     runner=(mise exec go@latest --)
   fi
+  # Recipes that run npm (hermes-desktop) need Node ≥ 22 and a newer npm than Debian 13's 20/9 → mise's.
+  # Put its bin first explicitly: `mise exec` leaves it after /usr/bin when mise is already active.
+  local node_dir
+  if grep -qE "^[[:space:]]*(npm|npx|node) " "$pkgfile" && command -v mise >/dev/null &&
+    node_dir=$(mise exec node@latest -- mise where node@latest 2>/dev/null); then
+    runner=(env "PATH=$node_dir/bin:$PATH" "${runner[@]}")
+  fi
   "${runner[@]}" bash "$0" __build-steps "$name" "$dir" "$pkgfile" "$build" > "$build/log" 2>&1
   rc=$?
   set -e

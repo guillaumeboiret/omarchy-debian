@@ -42,8 +42,11 @@ from pathlib import Path
 mode, home = sys.argv[1], Path(sys.argv[2])
 roots = [str((home / relative).resolve()) for relative in ('.hermes', '.config/Hermes')]
 roots.append('/opt/hermes-desktop')
+# Debian port: omarchy-debian installs the app under ~/.local/lib instead of /opt.
+roots.append(str(home / '.local/lib/hermes-desktop'))
 runtime = [str((home / relative).resolve()) for relative in ('.hermes/hermes-agent', '.hermes/node', '.hermes/bin')]
 runtime.append('/opt/hermes-desktop')
+runtime.append(str(home / '.local/lib/hermes-desktop'))
 
 def under(target, directories):
     target = target.removesuffix(' (deleted)')

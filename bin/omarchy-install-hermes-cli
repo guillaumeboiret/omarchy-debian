@@ -29,6 +29,15 @@ set -euo pipefail
 
 mode=${1:-}
 
+# Where the hermes-desktop package puts its installer and prebuilt app.
+pkg_share=/usr/share/hermes-desktop
+pkg_app=/opt/hermes-desktop
+# Debian port: omarchy-debian builds the package into ~/.local, with the app under lib/ (not /opt).
+if [[ -f /etc/debian_version ]]; then
+  pkg_share="$HOME/.local/share/hermes-desktop"
+  pkg_app="$HOME/.local/lib/hermes-desktop"
+fi
+
 # Keep the runtime at the root even when invoked from a Hermes profile.
 HERMES_HOME=$(realpath -ms -- "${HERMES_HOME:-$HOME/.hermes}")
 home_parent=$(dirname -- "$HERMES_HOME")
@@ -369,8 +378,8 @@ if ! omarchy-pkg-present hermes-desktop; then
   omarchy-pkg-add hermes-desktop
 fi
 
-if [[ ! -r /usr/share/hermes-desktop/install.sh || ! -r /usr/share/hermes-desktop/runtime.patch ]] ||
-  ! release_commit=$(jq -er 'select(.branch == "main") | .commit | select(test("^[0-9a-f]{40}$"))' /opt/hermes-desktop/resources/install-stamp.json 2>/dev/null); then
+if [[ ! -r $pkg_share/install.sh || ! -r $pkg_share/runtime.patch ]] ||
+  ! release_commit=$(jq -er 'select(.branch == "main") | .commit | select(test("^[0-9a-f]{40}$"))' "$pkg_app/resources/install-stamp.json" 2>/dev/null); then
   echo "The installed Hermes package cannot prepare in-app updates. Run 'omarchy update', then try again." >&2
   exit 1
 fi
@@ -416,8 +425,8 @@ refuse_unless_seedable() {
     echo "Hermes desktop sources have local changes. Run 'hermes desktop --build-only', then try again; existing files have been kept." >&2
     return 1
   fi
-  if ! git -C "$runtime" apply --check /usr/share/hermes-desktop/runtime.patch >/dev/null 2>&1 &&
-    ! git -C "$runtime" apply --reverse --check /usr/share/hermes-desktop/runtime.patch >/dev/null 2>&1; then
+  if ! git -C "$runtime" apply --check "$pkg_share/runtime.patch" >/dev/null 2>&1 &&
+    ! git -C "$runtime" apply --reverse --check "$pkg_share/runtime.patch" >/dev/null 2>&1; then
     echo "The Hermes Linux runtime patch conflicts with local changes. Existing files have been kept." >&2
     return 1
   fi
@@ -473,7 +482,7 @@ if [[ $runtime_present == "false" ]]; then
   echo "Setting up the Hermes runtime..."
   # npx stops to ask before fetching Playwright for the browser tools, and in
   # the terminal the menu opens for this nobody is there to say yes.
-  npm_config_yes=true bash /usr/share/hermes-desktop/install.sh --skip-setup --branch main --commit "$release_commit" --force-commit --dir "$runtime" --hermes-home "$HERMES_HOME"
+  npm_config_yes=true bash "$pkg_share/install.sh" --skip-setup --branch main --commit "$release_commit" --force-commit --dir "$runtime" --hermes-home "$HERMES_HOME"
   if ! runtime_ready; then
     echo "Hermes runtime setup did not complete. Re-run this command after resolving the installer error." >&2
     exit 1
@@ -485,7 +494,7 @@ elif [[ $command_ready == "false" ]]; then
   # with its mode bits stripped. Upstream's path stage writes its commands
   # without touching the checkout.
   echo "Restoring the Hermes commands..."
-  bash /usr/share/hermes-desktop/install.sh --stage path --dir "$runtime" --hermes-home "$HERMES_HOME"
+  bash "$pkg_share/install.sh" --stage path --dir "$runtime" --hermes-home "$HERMES_HOME"
 fi
 
 runtime_commit=$(git -C "$runtime" rev-parse HEAD)
@@ -498,9 +507,9 @@ if [[ $runtime_commit == "$release_commit" ]]; then
   fi
   git -C "$runtime" switch -C main "$release_commit"
 
-  if git -C "$runtime" apply --check /usr/share/hermes-desktop/runtime.patch >/dev/null 2>&1; then
-    git -C "$runtime" apply /usr/share/hermes-desktop/runtime.patch
-  elif ! git -C "$runtime" apply --reverse --check /usr/share/hermes-desktop/runtime.patch >/dev/null 2>&1; then
+  if git -C "$runtime" apply --check "$pkg_share/runtime.patch" >/dev/null 2>&1; then
+    git -C "$runtime" apply "$pkg_share/runtime.patch"
+  elif ! git -C "$runtime" apply --reverse --check "$pkg_share/runtime.patch" >/dev/null 2>&1; then
     echo "The Hermes Linux runtime patch conflicts with local changes. Existing files have been kept." >&2
     exit 1
   fi
@@ -511,7 +520,7 @@ if [[ ! -e $native_app && ! -L $native_app ]]; then
   mkdir -p -- "${native_app%/*}"
   staging=$(mktemp -d "${native_app%/*}/.${native_app##*/}.XXXXXX")
   trap 'rm -rf -- "$staging"' EXIT
-  cp -a /opt/hermes-desktop/. "$staging/"
+  cp -a "$pkg_app/." "$staging/"
   chmod 0755 "$staging/chrome-sandbox"
   mv -T --no-clobber -- "$staging" "$native_app"
   if [[ -e $staging ]]; then
