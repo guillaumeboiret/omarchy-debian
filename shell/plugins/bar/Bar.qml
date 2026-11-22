@@ -1689,12 +1689,13 @@ Item {
     // An explicit zone instead of Auto: the reserved area stays the strip's
     // thickness though the window spans its screen.
     exclusionMode: parked ? ExclusionMode.Ignore : ExclusionMode.Normal
-    exclusiveZone: thickness
+    exclusiveZone: Math.max(thickness, notchFullscreen)
 
     // Debian port: a window held full screen below the camera notch on this
-    // screen's workspace (default/hypr/notch-fullscreen.lua) turns the strip
-    // into a black band of the notch's height, shown even if the bar is hidden,
-    // whose exclusive zone keeps the window below the notch.
+    // screen's workspace (default/hypr/notch-fullscreen.lua) covers the strip
+    // with a black band of the notch's height, shown even if the bar is hidden,
+    // whose exclusive zone keeps the window below the notch. The widgets stay
+    // laid out and shown underneath, so the bar comes back exactly as it was.
     readonly property int notchFullscreen: {
       if (root.position !== "top") return 0
       var monitor = Hyprland.monitorFor(screen)
@@ -1749,7 +1750,7 @@ Item {
     }
 
     // The same thickness the bar publishes for its screen (screenBarSizes).
-    readonly property int thickness: Math.max(root.thicknessFor(screen), notchFullscreen)
+    readonly property int thickness: root.thicknessFor(screen)
 
     // The surface spans its screen at all times, transparent past the strip
     // it paints; a drag toggles only its input region. Growing the surface
@@ -1803,14 +1804,23 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: barWindow.notchFullscreen > 0 ? "black" : (root.transparent ? "transparent" : (root.glassy ? root.glassBackground : root.background))
+        color: root.transparent ? "transparent" : (root.glassy ? root.glassBackground : root.background)
       }
 
       Loader {
         anchors.fill: parent
-        visible: barWindow.notchFullscreen <= 0
         sourceComponent: root.vertical ? verticalBar : horizontalBar
       }
+    }
+
+    // Debian port: the notch band over the strip (see notchFullscreen).
+    Rectangle {
+      visible: barWindow.notchFullscreen > 0
+      x: 0
+      y: 0
+      width: parent.width
+      height: barWindow.notchFullscreen
+      color: "black"
     }
 
     PopupWindow {
