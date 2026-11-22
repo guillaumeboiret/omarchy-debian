@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true if all of the named packages can be installed on this system.
+# omarchy:args=<packages...>
+# omarchy:hidden=true
+
+# Debian port: the menu hides installs whose package doesn't exist for Debian ARM64 (debian/pkgmap
+# marks them none:) instead of showing an entry that can only fail. Arch's repos have them all.
+if [[ -f /etc/debian_version ]]; then
+  exec "$OMARCHY_PATH/debian/omarchy-debian-pkg" available "$@"
+fi
+
+exit 0

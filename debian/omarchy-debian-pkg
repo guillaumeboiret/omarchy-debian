@@ -5,6 +5,7 @@
 #
 #   omarchy-debian-pkg add|aur-add <pkg>…   install (skips what is already there)
 #   omarchy-debian-pkg present <pkg>…       exit 0 if all installed
+#   omarchy-debian-pkg available <pkg>…     exit 0 unless pkgmap marks one none: (unavailable)
 #   omarchy-debian-pkg missing <pkg>…       exit 0 if any is missing
 #   omarchy-debian-pkg drop <pkg>…          remove the installed ones
 #   omarchy-debian-pkg install|aur-install  fuzzy picker: Debian packages / Omarchy apps
@@ -123,6 +124,8 @@ fzf_pick() {
 case ${1:-} in
   add|aur-add) shift; cmd_add "$@" ;;
   present) shift; for p in "$@"; do is_present "$p" || exit 1; done ;;
+  # Only what pkgmap marks none: is unavailable; anything else may still resolve when installed.
+  available) shift; for p in "$@"; do ! awk -v n="$p" '$1 == n && $2 ~ /^none:/ { found = 1 } END { exit !found }' "$MAP" || exit 1; done ;;
   missing) shift; for p in "$@"; do is_present "$p" || exit 0; done; exit 1 ;;
   drop) shift; cmd_drop "$@" ;;
   install)

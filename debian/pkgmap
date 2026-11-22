@@ -12,7 +12,7 @@
 # Browsers
 google-chrome              flatpak:com.google.Chrome=google-chrome-stable
 brave-bin                  flatpak:com.brave.Browser=brave
-brave-origin-bin           flatpak:com.brave.Browser=brave
+brave-origin-bin           none:Brave Origin has no Linux ARM64 package; plain Brave is in Install > Browser
 zen-browser-bin            flatpak:app.zen_browser.zen=zen-browser
 microsoft-edge-stable-bin  none:Microsoft Edge has no Linux ARM64 build
 
