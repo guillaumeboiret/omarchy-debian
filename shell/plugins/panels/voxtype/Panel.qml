@@ -53,6 +53,12 @@ Panel {
   property bool meetingsBusy: false
   property string actionError: ""
 
+  // The last dictations, newest first, kept by `omarchy-voxtype-history save`
+  // (Voxtype's post_process hook). Read when the panel opens and after each
+  // dictation while it is open; clicking one copies it to the clipboard.
+  property var recent: []
+  property int copiedIndex: -1
+
   // Keyboard cursor over the action rows, in display order.
   property bool cursorActive: false
   property int cursorIndex: 0
@@ -60,6 +66,7 @@ Panel {
     var list = []
     if (running) list.push("record")
     if (running && busy) list.push("cancel")
+    for (var i = 0; i < recent.length; i++) list.push("recent:" + i)
     if (running && meetingsEnabled) list.push("meeting")
     list.push("meetings")
     list.push("settings")
@@ -97,6 +104,7 @@ Panel {
 
   function trigger(name) {
     actionError = ""
+    if (name.indexOf("recent:") === 0) { copyRecent(parseInt(name.slice(7))); return }
     if (name === "record") run(["voxtype", "record", recording ? "stop" : "start"])
     else if (name === "cancel") run(["voxtype", "record", "cancel"])
     else if (name === "meeting") {
@@ -122,6 +130,21 @@ Panel {
     meetingsProc.running = true
   }
 
+  function copyRecent(index) {
+    if (index < 0 || index >= recent.length) return
+    run(["wl-copy", "--", recent[index].text])
+    copiedIndex = index
+    copiedClose.restart()
+  }
+
+  function ago(seconds) {
+    var d = Math.max(0, Math.floor(Date.now() / 1000) - seconds)
+    if (d < 60) return Commons.I18n.t("voxtype.justNow")
+    if (d < 3600) return Commons.I18n.t("voxtype.minutesAgo").arg(Commons.I18n.formatNumber(Math.floor(d / 60)))
+    if (d < 86400) return Commons.I18n.t("voxtype.hoursAgo").arg(Commons.I18n.formatNumber(Math.floor(d / 3600)))
+    return Qt.formatDateTime(new Date(seconds * 1000), "d MMM, hh:mm")
+  }
+
   function run(command) {
     Quickshell.execDetached(command)
   }
@@ -129,11 +152,13 @@ Panel {
   function refresh() {
     if (!statusProc.running) statusProc.running = true
     if (!meetingConfigProc.running) meetingConfigProc.running = true
+    if (!historyProc.running) historyProc.running = true
   }
 
   onOpenedChanged: if (opened) {
     cursorActive = false
     actionError = ""
+    copiedIndex = -1
     refresh()
     Qt.callLater(function() { if (panel.loadedContent) panel.loadedContent.forceActiveFocus() })
   }
@@ -159,6 +184,28 @@ Panel {
           root.meetingActive = s.meeting_active === true
           root.meetingStatus = String(s.meeting_status || "idle")
         } catch (e) {}
+      }
+    }
+  }
+
+  // Shows the copied mark for a moment, then gets out of the way.
+  Timer {
+    id: copiedClose
+    interval: 450
+    onTriggered: root.close()
+  }
+
+  Process {
+    id: historyProc
+    command: ["omarchy-voxtype-history", "list"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var list = JSON.parse(text)
+          root.recent = Array.isArray(list) ? list : []
+        } catch (e) {
+          root.recent = []
+        }
       }
     }
   }
@@ -236,7 +283,8 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        if (t === "r" || t === "R") root.trigger("record")
+        if (t >= "0" && t <= "9") root.copyRecent(t === "0" ? 9 : parseInt(t) - 1)
+        else if (t === "r" || t === "R") root.trigger("record")
         else if (t === "c" || t === "C") { if (root.busy) root.trigger("cancel") }
         else if (t === "m" || t === "M") { if (root.meetingsEnabled) root.trigger("meeting") }
         else if (t === "s" || t === "S") root.trigger("settings")
@@ -326,6 +374,46 @@ Panel {
             spacing: Style.space(6)
 
             PanelSectionHeader {
+              text: Commons.I18n.t("voxtype.recent")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: root.recent.length === 0
+              width: parent.width
+              leftPadding: Style.space(10)
+              text: Commons.I18n.t("voxtype.recentEmpty")
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+              model: root.recent
+
+              ActionRow {
+                required property var modelData
+                required property int index
+                name: "recent:" + index
+                glyph: root.copiedIndex === index ? "󰄬" : (index < 10 ? String((index + 1) % 10) : "")
+                glyphColor: root.copiedIndex === index ? root.accent : root.dim
+                label: modelData.text
+                labelLines: 2
+                hint: root.copiedIndex === index ? Commons.I18n.t("voxtype.copied") : root.ago(modelData.time || 0)
+              }
+            }
+          }
+
+          PanelSeparator { foreground: root.foreground }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+
+            PanelSectionHeader {
               text: Commons.I18n.t("voxtype.meetings")
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -378,6 +466,7 @@ Panel {
     property color glyphColor: root.foreground
     property string label: ""
     property string hint: ""
+    property int labelLines: 1
 
     width: parent ? parent.width : 0
     hasCursor: root.cursorAction === name
@@ -423,6 +512,8 @@ Panel {
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
           elide: Text.ElideRight
+          wrapMode: row.labelLines > 1 ? Text.Wrap : Text.NoWrap
+          maximumLineCount: row.labelLines
         }
 
         Text {

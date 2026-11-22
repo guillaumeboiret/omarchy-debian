@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Keep your last 10 Voxtype dictations
+# omarchy:subcommand=save — Voxtype post_process hook: record the dictation on stdin and print it back unchanged
+# omarchy:subcommand=list — Print the kept dictations as JSON, newest first
+# omarchy:subcommand=clear — Forget them all
+
+# Voxtype runs `save` as its [output.post_process] command, so dictation must
+# never depend on it: the text is handed back untouched before anything else.
+
+keep=10
+dir="${XDG_STATE_HOME:-$HOME/.local/state}/voxtype"
+file="$dir/history.json"
+
+history() {
+  jq -c 'if type == "array" then [.[] | select(type == "object" and (.text | type) == "string")] else [] end' "$file" 2>/dev/null || echo "[]"
+}
+
+store() {
+  local tmp
+  mkdir -p -m 700 "$dir" || return 1
+  tmp=$(mktemp "$dir/.history.XXXXXX") || return 1
+  if cat >"$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$file"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
+case ${1:-list} in
+  save)
+    text=$(cat; printf x)
+    text=${text%x}
+    printf '%s' "$text"
+    if [[ -n ${text//[[:space:]]/} ]]; then
+      history | jq -c --arg text "$text" --argjson keep "$keep" --argjson now "$(date +%s)" \
+        '($text | gsub("^\\s+|\\s+$"; "")) as $t | [{text: $t, time: $now}] + map(select(.text != $t)) | .[:$keep]' \
+        | store || echo "omarchy-voxtype-history: could not save the dictation" >&2
+    fi
+    ;;
+  list)
+    history | jq -c --argjson keep "$keep" '.[:$keep]'
+    ;;
+  clear)
+    echo "[]" | store
+    ;;
+  *)
+    echo "usage: omarchy-voxtype-history save|list|clear" >&2
+    exit 2
+    ;;
+esac

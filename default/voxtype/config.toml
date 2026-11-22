@@ -80,6 +80,12 @@ type_delay_ms = 1
 # command = "ollama run llama3.2:1b 'Clean up this dictation. Fix grammar, remove filler words. Output only the cleaned text:'"
 # timeout_ms = 30000  # 30 second timeout (generous for LLM)
 
+# Omarchy keeps your last 10 dictations for the Voxtype bar panel (click one to copy it).
+# The text passes through unchanged. Replace this with your own command to opt out.
+[output.post_process]
+command = "omarchy-voxtype-history save"
+timeout_ms = 2000
+
 [output.notification]
 # Show notification when recording starts (hotkey pressed)
 on_recording_start = false
