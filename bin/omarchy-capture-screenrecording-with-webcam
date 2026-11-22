@@ -12,8 +12,20 @@ fi
 if (( ${#devices[@]} == 1 )); then
   device="${devices[0]%%[[:space:]]*}"
 else
-  selection=$(omarchy-menu-select "$(omarchy-i18n capture.selectWebcam)" "${devices[@]}" -- --width 520 --maxheight 520) || exit 1
-  device="${selection%%[[:space:]]*}"
+  # Show only the camera name ("Logitech StreamCam"), not the node or bus info
+  names=()
+  for entry in "${devices[@]}"; do
+    name="${entry#*[[:space:]][[:space:]]}"
+    names+=("${name% (*}")
+  done
+  selection=$(omarchy-menu-select "$(omarchy-i18n capture.selectWebcam)" "${names[@]}" -- --width 520 --maxheight 520) || exit 1
+  for i in "${!names[@]}"; do
+    if [[ ${names[i]} == "$selection" ]]; then
+      device="${devices[i]%%[[:space:]]*}"
+      break
+    fi
+  done
+  [[ -n $device ]] || exit 1
 fi
 
 exec omarchy-capture-screenrecording \
