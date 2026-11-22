@@ -39,18 +39,11 @@ if gum confirm --affirmative "$(omarchy-i18n common.yes)" --negative "$(omarchy-
     rm -f ~/.local/bin/muse
   fi
 
-  omarchy-pkg-drop \
-    aether \
-    cliamp \
-    libreoffice-fresh \
-    pinta \
-    obsidian \
-    omacut \
-    monologue \
-    omacalc \
-    omawrite \
-    hype \
-    signed \
-    fantasi \
-    flowtunes
+  packages=(aether cliamp libreoffice-fresh pinta obsidian omacut monologue omacalc omawrite hype signed fantasi flowtunes)
+  # Debian port: leave out what has no Debian ARM64 package (Hype needs Qt 6.9); Install and Remove
+  # filter the same way, so they keep covering the same packages.
+  for i in "${!packages[@]}"; do
+    omarchy-pkg-available "${packages[i]}" || unset 'packages[i]'
+  done
+  omarchy-pkg-drop "${packages[@]}"
 fi

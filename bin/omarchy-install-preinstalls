@@ -17,14 +17,16 @@ if gum confirm --affirmative "$(omarchy-i18n common.yes)" --negative "$(omarchy-
 
   # Mirrors the list in omarchy-remove-preinstalls; both track omarchy-base.packages
   packages=(aether cliamp libreoffice-fresh pinta obsidian omacut monologue omacalc omawrite hype signed fantasi flowtunes)
-  # Debian port: Hype needs Qt 6.9 (Debian 13 has 6.8), so it can't come back there; the rest can.
-  if [[ -f /etc/debian_version ]]; then
-    packages=("${packages[@]/hype}")
-  fi
-  if ! omarchy-pkg-add ${packages[@]}; then
+  # Debian port: leave out what has no Debian ARM64 package (Hype needs Qt 6.9); Install and Remove
+  # filter the same way, so they keep covering the same packages.
+  for i in "${!packages[@]}"; do
+    omarchy-pkg-available "${packages[i]}" || unset 'packages[i]'
+  done
+  if ! omarchy-pkg-add "${packages[@]}"; then
     echo -e "\nPreinstalls are still marked as removed. Fix the errors above and try again."
     exit 1
   fi
+
   # Last, so a failure above leaves the opt-out intact rather than restoring
   # keybindings for apps that never came back
   rm -f ~/.local/state/omarchy/preinstalls-removed
