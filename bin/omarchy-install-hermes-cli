@@ -32,11 +32,14 @@ mode=${1:-}
 # Where the hermes-desktop package puts its installer and prebuilt app.
 pkg_share=/usr/share/hermes-desktop
 pkg_app=/opt/hermes-desktop
-# Debian port: omarchy-debian builds the package into ~/.local, with the app under lib/ (not /opt).
-if [[ -f /etc/debian_version ]]; then
-  pkg_share="$HOME/.local/share/hermes-desktop"
-  pkg_app="$HOME/.local/lib/hermes-desktop"
-fi
+# Debian port: omarchy-debian builds the package into ~/.local, with /opt's app under lib/. Asked
+# once the package is in, since on a first install neither place exists yet.
+locate_package() {
+  if [[ ! -e $pkg_share && -e $HOME/.local/share/hermes-desktop ]]; then
+    pkg_share="$HOME/.local/share/hermes-desktop"
+    pkg_app="$HOME/.local/lib/hermes-desktop"
+  fi
+}
 
 # Keep the runtime at the root even when invoked from a Hermes profile.
 HERMES_HOME=$(realpath -ms -- "${HERMES_HOME:-$HOME/.hermes}")
@@ -377,6 +380,7 @@ if ! omarchy-pkg-present hermes-desktop; then
   echo "Installing Hermes Desktop..."
   omarchy-pkg-add hermes-desktop
 fi
+locate_package
 
 if [[ ! -r $pkg_share/install.sh || ! -r $pkg_share/runtime.patch ]] ||
   ! release_commit=$(jq -er 'select(.branch == "main") | .commit | select(test("^[0-9a-f]{40}$"))' "$pkg_app/resources/install-stamp.json" 2>/dev/null); then

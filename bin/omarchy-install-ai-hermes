@@ -14,7 +14,12 @@ fi
 omarchy-install-hermes-cli --now
 
 echo "Opening Hermes Desktop..."
-setsid uwsm-app -- hermes-desktop >/dev/null 2>&1 &
+# Debian port: omarchy-debian builds the launcher into ~/.local/bin.
+app=/usr/bin/hermes-desktop
+if [[ ! -x $app ]]; then
+  app=hermes-desktop
+fi
+setsid uwsm-app -- "$app" >/dev/null 2>&1 &
 
 echo ""
 echo "Hermes Desktop has been installed."
