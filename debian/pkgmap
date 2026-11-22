@@ -54,7 +54,7 @@ wine-gecko                 none:Debian's wine downloads Gecko on first use
 moonlight-qt               flatpak:com.moonlight_stream.Moonlight=moonlight
 sunshine                   flatpak:dev.lizardbyte.app.Sunshine=sunshine
 minecraft-launcher         flatpak:org.prismlauncher.PrismLauncher=prismlauncher
-retroarch                  flatpak:org.libretro.RetroArch=retroarch
+retroarch                  apt:retroarch
 xpadneo-dkms               none:xpadneo isn't packaged for Debian
 
 # Libraries / dev bits under Debian names

@@ -5,6 +5,10 @@
 set -e
 
 core_dir="/usr/lib/libretro"
+# Debian port: Debian installs cores in the multiarch libretro dir.
+if [[ -f /etc/debian_version ]]; then
+  core_dir="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/libretro"
+fi
 preferred_cores=(
   "Amstrad CPC|cap32"
   "Arcade FBNeo|fbneo"
