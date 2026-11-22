@@ -139,4 +139,11 @@ const stateBarSizeFor = new Function('barSizes', 'barSize', apiFor[1], apiFor[2]
 assertEqual(stateBarSizeFor(copy, 26, 'eDP-1'), 40, 'a plugin reads a notch screen\'s thickness')
 assertEqual(stateBarSizeFor(copy, 26, 'HDMI-A-1'), 26, 'a plugin falls back to barSize for a screen with none')
 assertEqual(stateBarSizeFor({}, 26, 'eDP-1'), 26, 'a plugin under a bar without per-screen sizes gets barSize')
+// Debian port: a window held full screen below the notch is found by its tag,
+// on its own workspace only, and the band is the height the tag carries.
+const held = (ws, tags) => ({ workspace: { id: ws }, lastIpcObject: { tags } })
+const windows = [held(1, ['terminal*']), held(3, ['transparent-window*', 'notch-fullscreen:37*'])]
+assertEqual(bar.notchFullscreenStrip(windows, 3), 37, 'a held window gives its band height')
+assertEqual(bar.notchFullscreenStrip(windows, 1), 0, 'another workspace has no band')
+assertEqual(bar.notchFullscreenStrip([held(3, ['notch-fullscreen*'])], 3), 0, 'a tag without a height is ignored')
 JS
