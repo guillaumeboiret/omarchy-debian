@@ -1688,8 +1688,20 @@ Item {
     visible: cutoutWaitOver || !cutoutPending
     // An explicit zone instead of Auto: the reserved area stays the strip's
     // thickness though the window spans its screen.
-    exclusionMode: root.barHidden ? ExclusionMode.Ignore : ExclusionMode.Normal
+    exclusionMode: parked ? ExclusionMode.Ignore : ExclusionMode.Normal
     exclusiveZone: thickness
+
+    // Debian port: a window held full screen below the camera notch on this
+    // screen's workspace (default/hypr/notch-fullscreen.lua) turns the strip
+    // into a black band of the notch's height, shown even if the bar is hidden,
+    // whose exclusive zone keeps the window below the notch.
+    readonly property int notchFullscreen: {
+      if (root.position !== "top") return 0
+      var monitor = Hyprland.monitorFor(screen)
+      var workspace = monitor ? monitor.activeWorkspace : null
+      return workspace ? BarModel.notchFullscreenStrip(Hyprland.toplevels.values, workspace.id) : 0
+    }
+    readonly property bool parked: root.barHidden && notchFullscreen <= 0
 
     // While this window's widget or bar-move drag is live, the whole surface
     // takes input (mask below), so the pointer never leaves the bar surface
@@ -1708,7 +1720,7 @@ Item {
     // nor the clear rest that a drag takes input on.
     readonly property real parkDistance: root.vertical ? implicitWidth : implicitHeight
     margins {
-      top: root.barHidden && root.position === "top" ? -barWindow.parkDistance : 0
+      top: barWindow.parked && root.position === "top" ? -barWindow.parkDistance : 0
       bottom: root.barHidden && root.position === "bottom" ? -barWindow.parkDistance : 0
       left: root.barHidden && root.position === "left" ? -barWindow.parkDistance : 0
       right: root.barHidden && root.position === "right" ? -barWindow.parkDistance : 0
@@ -1737,7 +1749,7 @@ Item {
     }
 
     // The same thickness the bar publishes for its screen (screenBarSizes).
-    readonly property int thickness: root.thicknessFor(screen)
+    readonly property int thickness: Math.max(root.thicknessFor(screen), notchFullscreen)
 
     // The surface spans its screen at all times, transparent past the strip
     // it paints; a drag toggles only its input region. Growing the surface
@@ -1769,7 +1781,7 @@ Item {
     // every layer on the monitor back above whenever a window on any other
     // workspace leaves fullscreen, or the layer remaps. The invisible strip
     // would then take the clicks meant for the top of the fullscreen window.
-    mask: dragActive ? null : (underFullscreen ? noInputRegion : stripInputRegion)
+    mask: dragActive ? null : (underFullscreen || notchFullscreen > 0 ? noInputRegion : stripInputRegion)
 
     Region {
       id: stripInputRegion
@@ -1791,11 +1803,12 @@ Item {
 
       Rectangle {
         anchors.fill: parent
-        color: root.transparent ? "transparent" : (root.glassy ? root.glassBackground : root.background)
+        color: barWindow.notchFullscreen > 0 ? "black" : (root.transparent ? "transparent" : (root.glassy ? root.glassBackground : root.background))
       }
 
       Loader {
         anchors.fill: parent
+        visible: barWindow.notchFullscreen <= 0
         sourceComponent: root.vertical ? verticalBar : horizontalBar
       }
     }
