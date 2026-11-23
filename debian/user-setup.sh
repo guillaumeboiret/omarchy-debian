@@ -212,3 +212,30 @@ sed 's|^ExecStart=/usr/bin/|ExecStart=/usr/share/omarchy/bin/|' "$OM/default/sys
   >"$HOME/.config/systemd/user/omarchy-tailscale-receive.service"
 systemctl --user daemon-reload
 systemctl --user enable omarchy-tailscale-receive.service
+
+# 21. Weekly update check (debian/bin/omarchy-update-check): upstream is fetched on Saturdays only,
+#     so the bar's update badge shows that week's update instead of a new one every day.
+cat >"$HOME/.config/systemd/user/omarchy-update-check.service" <<'UNIT'
+[Unit]
+Description=Check for Omarchy updates (Saturdays)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/omarchy/debian/bin/omarchy-update-check
+Restart=on-failure
+RestartSec=15min
+UNIT
+cat >"$HOME/.config/systemd/user/omarchy-update-check.timer" <<'UNIT'
+[Unit]
+Description=Weekly Omarchy update check (Saturday 10:00)
+
+[Timer]
+OnCalendar=Sat *-*-* 10:00:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable --now omarchy-update-check.timer

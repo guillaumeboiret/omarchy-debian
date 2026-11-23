@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Undo the last Omarchy update (Debian port): back to the port as it was before it
+#
+# Menu: Update → Undo last update. Apps and Debian packages keep their new versions;
+# only Omarchy itself (config, shell, scripts and the Debian patches) goes back.
+
+set -uo pipefail
+
+last=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/last-update
+if [[ ! -f $last ]]; then
+  echo "There's no Omarchy update to undo."
+  exit 0
+fi
+when=$(sed -n 's/^when=//p' "$last")
+if [[ -t 0 ]]; then
+  read -rp "Undo the Omarchy update of $when? [y/N] " answer
+  [[ $answer =~ ^[Yy] ]] || exit 0
+fi
+"$OMARCHY_PATH/debian/omarchy-debian" rollback

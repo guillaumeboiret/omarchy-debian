@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Weekly Omarchy update check (Debian port): fetch upstream on Saturdays, show the bar badge
+#
+# Run by omarchy-update-check.timer (Saturday 10:00, caught up later that Saturday if the
+# machine was off or asleep). The bar badge (omarchy-update-available) never fetches by
+# itself, so new upstream commits only surface here, once a week. --now skips the day check.
+
+set -uo pipefail
+
+[[ ${1:-} == --now || $(date +%u) == 6 ]] || exit 0
+
+OM=${OMARCHY_PATH:-/usr/share/omarchy}
+if ! GIT_TERMINAL_PROMPT=0 timeout 60 git -C "$OM" fetch --quiet origin; then
+  echo "Couldn't reach GitHub — trying again later" >&2
+  exit 1  # the service retries every 15 minutes (the day check stops it after Saturday)
+fi
+
+/usr/share/omarchy/bin/omarchy-shell -q omarchy.system-update refresh >/dev/null 2>&1 || true
+
+upstream=$(git -C "$OM" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null) || exit 0
+behind=$(git -C "$OM" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
+echo "$behind new upstream commits"
+if (( behind > 0 )); then
+  notify-send -a Omarchy "Omarchy update available" \
+    "$behind new changes this week. Click the update icon in the bar when you're ready." || true
+fi

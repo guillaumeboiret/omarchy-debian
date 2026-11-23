@@ -3,6 +3,8 @@
 #
 #   omarchy-debian update            Update everything: Omarchy itself (rebasing the Debian patches),
 #                                    Omarchy's own apps, Flatpaks, Neovim plugins
+#   omarchy-debian rollback          Undo the last Omarchy update (back to the port as it was before)
+#   omarchy-debian risky-changes     Files the last update changed in Hyprland config, keys or the shell
 #   omarchy-debian apps              List Omarchy apps with installed / available versions
 #   omarchy-debian apps install [N…] Build + install apps (default: all supported)
 #   omarchy-debian apps update       Rebuild only apps whose recipe version changed
@@ -18,6 +20,8 @@ DEB="$OM/debian"
 PKGS="$HOME/.local/src/omarchy-pkgs"
 WORK="$HOME/.cache/omarchy-debian/build"
 DB="$HOME/.local/state/omarchy-debian/installed"
+# What the last update changed (before/after port commits, old/new upstream base) — for rollback and review.
+LAST_UPDATE="$HOME/.local/state/omarchy/last-update"
 PREFIX="$HOME/.local"
 CARCH=aarch64
 
@@ -265,7 +269,11 @@ update_omarchy() {
       die "the new Omarchy config doesn't load on this Hyprland — nothing was changed. Ask Claude to refresh the port."
     fi
     git worktree remove --force "$work"
+    git update-ref refs/omarchy/pre-update "$before"   # keeps the old port reachable for rollback
     git reset -q --hard "$new"
+    mkdir -p "${LAST_UPDATE%/*}"
+    printf 'before=%s\nafter=%s\nold_base=%s\nnew_base=%s\nwhen=%s\n' "$before" "$new" \
+      "$(git merge-base "$before" "$upstream")" "$(git merge-base "$new" "$upstream")" "$(date '+%A %-d %B %H:%M')" >"$LAST_UPDATE"
     git log --oneline "$before..HEAD" | grep -v "Debian port" | head -20 | sed 's/^/    /'
     command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
   else
@@ -273,6 +281,43 @@ update_omarchy() {
     say "Omarchy is already up to date"
   fi
   backup_port "$before"
+}
+
+last_update() { sed -n "s/^$1=//p" "$LAST_UPDATE" 2>/dev/null; }
+
+# Undo the last update: put the port back where it was before it. Omarchy's apps
+# (built from omarchy-pkgs) and apt packages keep their updated versions.
+rollback_omarchy() {
+  [[ -f $LAST_UPDATE ]] || die "there's no Omarchy update to undo"
+  local before after when remote_tip
+  before=$(last_update before) after=$(last_update after) when=$(last_update when)
+  cd "$OM"
+  [[ $(git rev-parse HEAD) == "$after" ]] || die "Omarchy changed after the update of $when (new commits on top) — ask Claude to undo it."
+  [[ -n $(git status --porcelain --untracked-files=no) ]] && die "uncommitted changes in $OM — commit or stash them first"
+  git cat-file -e "$before^{commit}" 2>/dev/null || die "the pre-update port ($before) is gone — ask Claude."
+  say "Undoing the Omarchy update of $when"
+  git reset -q --hard "$before"
+  rm -f "$LAST_UPDATE"
+  command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
+  # The GitHub backup got the update; put it back too, but only over exactly that commit.
+  if git remote get-url backup >/dev/null 2>&1 && git fetch -q backup debian-port 2>/dev/null; then
+    remote_tip=$(git rev-parse FETCH_HEAD)
+    if [[ $remote_tip == "$after" ]]; then
+      git push -q --force-with-lease="debian-port:$after" backup HEAD:debian-port 2>/dev/null || warn "GitHub backup push failed — ask Claude to push the port"
+    elif [[ $remote_tip != "$before" ]]; then
+      warn "the GitHub backup isn't at the update — left alone. Ask Claude to sort it out."
+    fi
+  fi
+  say "Done — Omarchy is back to how it was before $when. Apps and Debian packages keep their new versions."
+}
+
+# Upstream files the last update changed that can alter how the desktop behaves: Hyprland
+# config and keybindings, the shell (bar, menus, panels), and the menu/dictation/launch scripts.
+risky_changes() {
+  [[ -f $LAST_UPDATE ]] || return 0
+  git -C "$OM" diff --name-only "$(last_update old_base)" "$(last_update new_base)" |
+    grep -E '^(default/hypr/|config/hypr/|shell/|bin/omarchy-(menu|dictation|hyprland|launch|restart|toggle))|\.lua$' |
+    grep -vE '/i18n/|^shell/.*\.md$' || true
 }
 
 # Mirror the port to the private GitHub backup (remote `backup`). A rebase rewrites the
@@ -349,6 +394,8 @@ case ${1:-help} in
     else
       say "Done. (Debian packages are updated separately: sudo apt update && sudo apt upgrade)"
     fi ;;
+  rollback) rollback_omarchy ;;
+  risky-changes) risky_changes ;;
   apps) shift; apps_cmd "$@" ;;
-  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

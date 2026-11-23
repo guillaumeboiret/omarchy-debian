@@ -432,6 +432,7 @@
 
   // Update
   "update.omarchy": {"icon":"","iconFont":"omarchy","label":"Omarchy","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},
+  "update.undo": {"icon":"","label":"Undo last update","description":"Put Omarchy back as it was before the last update","when":"[[ -f /etc/debian_version && -f ${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/last-update ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-undo"},
   "update.channel": {"icon":"󰔫","label":"Channel"},
   "update.kernel": {"icon":"","label":"Kernel","when":"(( $(omarchy-kernel list | wc -l) > 1 ))","provider":"kernels"},
   "update.config": {"icon":"","label":"Config","title":"Reset to default"},
