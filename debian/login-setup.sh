@@ -74,17 +74,30 @@ cp -r "$OM"/default/plymouth/. /usr/share/plymouth/themes/omarchy/
 chmod -R u=rwX,go=rX /usr/share/plymouth/themes/omarchy
 plymouth-set-default-theme omarchy
 
-# Normal boot = splash and nothing else, like macOS: kernel/udev/systemd messages and the blinking
+# Boots show the kernel/systemd text log by default: the port is young and the log is how a boot
+# problem gets seen. The silent splash boot is opt-in: put OMARCHY_BOOT_SPLASH=1 in
+# /etc/default/omarchy-boot and rerun this script.
+#
+# Splash boot = splash and nothing else, like macOS: kernel/udev/systemd messages and the blinking
 # console cursor are silenced. Asahi's kernel has no simpledrm, only the simplefb framebuffer, which
 # Plymouth ignores at boot by default (it waits for the Apple display driver and shows text instead),
 # so force the framebuffer. plymouth.debug only writes /var/log/plymouth-debug.log, for diagnosis.
 # fbcon=vc:2-63: no text console on tty1 (boot/greeter VT) - when the splash drops the display, the
 # kernel would otherwise flash tty1's text before SDDM appears. Ctrl+Alt+F2..F6 still have consoles.
-splash_args="splash loglevel=0 fbcon=vc:2-63 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
+OMARCHY_BOOT_SPLASH=0
+[[ -f /etc/default/omarchy-boot ]] && source /etc/default/omarchy-boot
+if [[ $OMARCHY_BOOT_SPLASH == "1" ]]; then
+  splash_args="quiet splash loglevel=0 fbcon=vc:2-63 rd.udev.log_level=3 udev.log_level=3 systemd.show_status=false rd.systemd.show_status=false vt.global_cursor_default=0 plymouth.force-frame-buffer-on-boot plymouth.debug"
+else
+  splash_args=""
+fi
+# "quiet" belongs to the splash arguments, so a verbose boot really is verbose.
+sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT="\)quiet \?/\1/' /etc/default/grub
 {
   echo '#!/bin/sh'
-  echo '# Omarchy (Debian port): silent splash boot only when the previous boot succeeded;'
-  echo '# after a failed/unclean boot (recordfail) the normal text log is shown.'
+  echo '# Omarchy (Debian port): text boot log, or (OMARCHY_BOOT_SPLASH=1 in /etc/default/omarchy-boot)'
+  echo '# a silent splash boot when the previous boot succeeded; after a failed/unclean boot'
+  echo '# (recordfail) the normal text log is shown either way.'
   echo "cat <<'EOF'"
   # GRUB itself prints to the firmware console (= serial only with the quiet U-Boot, so nothing on
   # screen); after a failed boot it switches to its graphical terminal so the menu is visible.
