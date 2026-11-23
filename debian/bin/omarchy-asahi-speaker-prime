@@ -1,0 +1,20 @@
+#!/bin/bash
+# Wake asahi-audio's speaker DSP sink once, right after WirePlumber creates it.
+#
+# A freshly created filter-chain sink (audio_effect.jNNN-convolver, the default
+# output on Apple Silicon Macs) silently drops every volume change until audio has
+# run through it once: the volume keys look dead (OSD stuck at 100%) after each
+# login, reboot or update, until something plays a sound, and that first sound
+# plays at 100%. Playing 0.2 s of silence through it fixes the node for its
+# lifetime, even after it suspends again. Run by omarchy-asahi-speaker-prime.service,
+# which restarts with WirePlumber. Exits quietly on machines without that sink.
+
+for _ in $(seq 60); do
+  sink=$(pactl list sinks short 2>/dev/null | awk '$2 ~ /^audio_effect\.j[0-9]+-convolver$/ {print $2; exit}')
+  [[ -n $sink ]] && break
+  sleep 0.5
+done
+[[ -n $sink ]] || exit 0
+
+# 9600 frames of 16-bit stereo zeros = 0.2 s at 48 kHz.
+head -c 38400 /dev/zero | pw-play --target "$sink" --raw --rate 48000 --channels 2 --format s16 -

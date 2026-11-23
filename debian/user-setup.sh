@@ -239,3 +239,23 @@ WantedBy=timers.target
 UNIT
 systemctl --user daemon-reload
 systemctl --user enable --now omarchy-update-check.timer
+
+# 22. Speaker volume after login: asahi-audio's speaker DSP sink ignores volume changes until audio
+#     has played through it once, so the volume keys looked dead after every login/update.
+#     debian/bin/omarchy-asahi-speaker-prime plays 0.2 s of silence each time WirePlumber starts.
+cat >"$HOME/.config/systemd/user/omarchy-asahi-speaker-prime.service" <<'UNIT'
+[Unit]
+Description=Wake the Asahi speaker DSP sink so volume changes apply
+After=wireplumber.service
+PartOf=wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/omarchy/debian/bin/omarchy-asahi-speaker-prime
+TimeoutStartSec=60
+
+[Install]
+WantedBy=wireplumber.service
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable omarchy-asahi-speaker-prime.service

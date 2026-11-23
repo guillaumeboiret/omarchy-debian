@@ -8,6 +8,7 @@
 #   omarchy-debian discard           Throw the prepared update away
 #   omarchy-debian rollback          Undo the last Omarchy update (back to the port as it was before)
 #   omarchy-debian risky-changes     Files the last update changed in Hyprland config, keys or the shell
+#   omarchy-debian check-keys        Check volume/media/menu keys still reach the shell (also runs after each update)
 #   omarchy-debian apps              List Omarchy apps with installed / available versions
 #   omarchy-debian apps install [N…] Build + install apps (default: all supported)
 #   omarchy-debian apps update       Rebuild only apps whose recipe version changed
@@ -331,8 +332,31 @@ apply_omarchy() {
     sleep 2
     [[ -z $(hyprctl configerrors 2>/dev/null | tr -d '[:space:]') ]] ||
       warn "Hyprland reports config errors after the update (hyprctl configerrors) — undo it with omarchy-update-undo, or let Claude fix it"
+    check_keys || warn "some keys are dead after the update (see above) — undo it with omarchy-update-undo, or let Claude fix it"
   fi
   backup_port "$before"
+}
+
+# Keys that reach the shell (volume, play/pause, menus, panels…) dispatch a Hyprland global
+# shortcut when default/omarchy/shortcuts lists it, so each listed one must be registered by
+# the running shell, or that key does nothing. Also checks the media keys are still bound.
+check_keys() {
+  local registered missing=() key line kind target
+  for _ in $(seq 20); do  # the shell takes a few seconds to come back after a restart
+    registered=$(hyprctl globalshortcuts 2>/dev/null)
+    [[ $registered == *"omarchy:"* ]] && break
+    sleep 0.5
+  done
+  while read -r kind target; do
+    [[ $kind =~ ^[A-Za-z]+$ && -n $target ]] || continue
+    grep -qF "omarchy:$kind.$target ->" <<<"$registered" || missing+=("$kind $target")
+  done <"$OM/default/omarchy/shortcuts"
+  for key in XF86AudioRaiseVolume XF86AudioLowerVolume XF86AudioMute XF86AudioPlay XF86AudioNext XF86AudioPrev; do
+    hyprctl binds 2>/dev/null | grep -qx "[[:space:]]*key: $key" || missing+=("binding $key")
+  done
+  ((${#missing[@]} == 0)) && return 0
+  for line in "${missing[@]}"; do warn "key not wired to the shell: $line"; done
+  return 1
 }
 
 update_omarchy() {
@@ -460,6 +484,7 @@ case ${1:-help} in
     fi ;;
   rollback) rollback_omarchy ;;
   risky-changes) risky_changes ;;
+  check-keys) check_keys && say "All shell keys (volume, media, menus, panels) are wired" ;;
   apps) shift; apps_cmd "$@" ;;
   *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
