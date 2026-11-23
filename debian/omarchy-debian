@@ -274,7 +274,7 @@ update_omarchy() {
     mkdir -p "${LAST_UPDATE%/*}"
     printf 'before=%s\nafter=%s\nold_base=%s\nnew_base=%s\nwhen=%s\n' "$before" "$new" \
       "$(git merge-base "$before" "$upstream")" "$(git merge-base "$new" "$upstream")" "$(date '+%A %-d %B %H:%M')" >"$LAST_UPDATE"
-    git log --oneline "$before..HEAD" | grep -v "Debian port" | head -20 | sed 's/^/    /'
+    git log --oneline "$(last_update old_base)..$(last_update new_base)" | head -20 | sed 's/^/    /'
     command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
   else
     git worktree remove --force "$work"
