@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Open Claude Code to fix a failed Omarchy (Debian port) update from its log
-# omarchy:args=[--review | log]
+# omarchy:args=[--pre-review] [log]
 #
-# Called by omarchy-update when `omarchy-debian update` fails or warns, and with --review
-# when an update went through but changed Hyprland config, keybindings or the shell (the
-# config check only proves it loads, not that it behaves). Claude can't run (usage limit,
+# Called by omarchy-update when `omarchy-debian update` fails or warns, and with --pre-review
+# when a prepared (not yet applied) update changes Hyprland config, keybindings or the shell:
+# the config check only proves it loads, not that it behaves. The review happens in the
+# prepared copy, so fixes go in before the update reaches the desktop. Claude can't run (usage limit,
 # login, network) → says so and leaves it for later; nothing else changes.
 
 set -uo pipefail
@@ -13,7 +14,8 @@ set -uo pipefail
 OM=$OMARCHY_PATH
 state=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy
 mode=fix
-[[ ${1:-} == --review ]] && { mode=review; shift; }
+[[ ${1:-} == --pre-review ]] && { mode=review; shift; }
+next=$HOME/.cache/omarchy-debian/next
 log=${1:-$state/update.log}
 
 warn() { printf '\e[1;33m==>\e[0;1m %s\e[0m\n' "$*"; }
@@ -32,7 +34,7 @@ if (( code != 0 )) || ! jq -e '.is_error == false' <<<"$reply" >/dev/null 2>&1; 
   warn "Claude can't run right now (usage limit, login or network):"
   printf '    %s\n' "$reason"
   if [[ $mode == review ]]; then
-    warn "Try again later with: omarchy-update-claude --review   (or undo the update: omarchy-update-undo)"
+    warn "You can still apply the update unreviewed, or say no and update another time."
   else
     warn "Try again later with: omarchy-update-claude $log"
   fi
@@ -42,15 +44,13 @@ fi
 if [[ $mode == review ]]; then
   title="Omarchy update review"
   prompt=$(cat <<EOF
-The Omarchy Debian port update just went through, and it changed Hyprland config, keybindings or the shell. $state/last-update has the port commits before/after and the upstream range old_base..new_base; the update output is in $log. See the omarchy setup memory for the port layout.
+An Omarchy update is PREPARED BUT NOT APPLIED: the Debian port rebased onto the new upstream is a git worktree at $next (detached HEAD); $state/pending-update has before / old_base / new_base; the prepare output is in $log. The live checkout $OM (= /usr/share/omarchy, my running desktop) must NOT change during this review. See the omarchy setup memory for the port layout.
 
-Review the upstream changes in old_base..new_base that touch those areas (\`$OM/debian/omarchy-debian risky-changes\` lists the files) against THIS machine: Hyprland 0.55 (local build), Qt 6.8, Quickshell 0.3, the Debian patches on debian-port, and my own config in ~/.config/hypr (Mac keyboard: mac-option.lua, mac-text.lua, bindings.lua, app-switcher.lua, claude.lua, input.lua). Check the live state too: hyprctl configerrors, omarchy-lua-errorlog, \`journalctl --user -t omarchy-shell --since -15min\` for QML errors, /usr/lib/qt6/bin/qmllint on changed QML for Qt 6.9-only properties.
+Review the upstream changes in old_base..new_base that touch Hyprland config, keys or the shell (\`$OM/debian/omarchy-debian risky-changes\` lists the files) against THIS machine: Hyprland 0.55 (local build), Qt 6.8, Quickshell 0.3, the Debian patches, and my own config in ~/.config/hypr (Mac keyboard: mac-option.lua, mac-text.lua, bindings.lua, app-switcher.lua, claude.lua, input.lua). Checks that don't touch the desktop: \`OMARCHY_PATH=$next Hyprland --verify-config -c ~/.config/hypr/hyprland.lua\`, /usr/lib/qt6/bin/qmllint on changed QML in $next (Qt 6.9-only properties), reading the diffs against my config.
 
-Then tell me in plain language:
-1. what changed that I will notice — above all keys, shortcuts and gestures, and anything that now fights my Mac keyboard setup;
-2. anything broken or likely to break here.
-Fix what's broken: commit on debian-port as "Debian port: ...", hyprctl reload / omarchy-restart-shell, and show me the change and wait for my OK before pushing to the backup remote. If something can't be fixed quickly, tell me I can undo the whole update with omarchy-update-undo. Don't run apt or sudo (the terminal runs apt after you). Never use synthetic input (wtype/ydotool) in my session.
-End with a short summary and tell me to type /exit.
+If something would break or fight my setup, fix it IN $next and commit it there as "Debian port: ..." — it becomes part of the update when I apply it. Don't push, don't touch $OM, don't run apt or sudo, never use synthetic input.
+
+Then tell me in plain language: what I will notice (above all keys, shortcuts, gestures), what you fixed, what risk remains, and your recommendation: apply now, or skip this week. Tell me to type /exit — I'm asked to apply right after.
 EOF
 )
 else
@@ -59,7 +59,7 @@ else
 The Omarchy Debian port update ($OM/debian/omarchy-debian update) just failed or warned. The full output is in $log — read it first (see the omarchy setup memory for the port layout).
 
 Fix the cause, then rerun $OM/debian/omarchy-debian update (long timeout; builds take minutes) until it passes cleanly:
-- "a Debian patch no longer applies": rebase debian-port onto upstream yourself and resolve the conflicts so every Debian patch keeps doing its job on the new upstream code. Verify with Hyprland --verify-config. BEFORE committing the rebase or pushing to the backup remote, show me the conflict resolutions and wait for my OK.
+- "a Debian patch no longer applies": rebase debian-port onto upstream yourself IN A SEPARATE git worktree (never in $OM itself: it is the running desktop) and resolve the conflicts so every Debian patch keeps doing its job on the new upstream code. Verify with OMARCHY_PATH=<worktree> Hyprland --verify-config; only then reset debian-port to the result. BEFORE committing the rebase or pushing to the backup remote, show me the conflict resolutions and wait for my OK.
 - an app build failure: read ~/.cache/omarchy-debian/build/<app>/log and fix debian/patches/<app>.sh or the recipe.
 - anything needing root: don't run sudo; give me the exact command at the end.
 Commit fixes on debian-port as "Debian port: ...". Don't run apt (the terminal does it after you).
@@ -69,4 +69,5 @@ EOF
 fi
 
 warn "Starting Claude — type /exit when it's done (or if it runs out of usage)."
-cd "$OM" && claude -n "$title" --permission-mode auto "$prompt"
+workdir=$OM; [[ $mode == review && -d $next ]] && workdir=$next
+cd "$workdir" && claude -n "$title" --permission-mode auto "$prompt"

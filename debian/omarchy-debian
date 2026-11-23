@@ -3,6 +3,9 @@
 #
 #   omarchy-debian update            Update everything: Omarchy itself (rebasing the Debian patches),
 #                                    Omarchy's own apps, Flatpaks, Neovim plugins
+#   omarchy-debian prepare           Prepare the Omarchy update in a separate copy (live desktop untouched)
+#   omarchy-debian update --prepared Apply the prepared update (then apps etc., as update)
+#   omarchy-debian discard           Throw the prepared update away
 #   omarchy-debian rollback          Undo the last Omarchy update (back to the port as it was before)
 #   omarchy-debian risky-changes     Files the last update changed in Hyprland config, keys or the shell
 #   omarchy-debian apps              List Omarchy apps with installed / available versions
@@ -22,6 +25,9 @@ WORK="$HOME/.cache/omarchy-debian/build"
 DB="$HOME/.local/state/omarchy-debian/installed"
 # What the last update changed (before/after port commits, old/new upstream base) — for rollback and review.
 LAST_UPDATE="$HOME/.local/state/omarchy/last-update"
+# An update prepared (rebased + config-checked) but not applied yet: the worktree and its record.
+NEXT="$HOME/.cache/omarchy-debian/next"
+PENDING="$HOME/.local/state/omarchy/pending-update"
 PREFIX="$HOME/.local"
 CARCH=aarch64
 
@@ -242,45 +248,97 @@ apps_cmd() {
   esac
 }
 
-update_omarchy() {
-  say "Updating Omarchy (keeping the Debian patches on top)"
+upstream_ref() {
+  if git -C "$OM" rev-parse -q --verify origin/HEAD >/dev/null; then echo origin/HEAD
+  else echo "origin/$(git -C "$OM" remote show origin | sed -n 's/.*HEAD branch: //p')"; fi
+}
+verify_config() { OMARCHY_PATH=$1 Hyprland --verify-config -c "$HOME/.config/hypr/hyprland.lua" 2>&1 | grep -q "config ok"; }
+pending() { sed -n "s/^$1=//p" "$PENDING" 2>/dev/null; }
+discard_pending() {
+  [[ -d $NEXT ]] && git -C "$OM" worktree remove --force "$NEXT" 2>/dev/null
+  rm -rf "$NEXT" "$PENDING"
+  git -C "$OM" worktree prune
+}
+clean_or_die() {
+  [[ -z $(git -C "$OM" status --porcelain --untracked-files=no) ]] || die "uncommitted changes in $OM — commit or stash them first"
+}
+
+# Step 1: rebase the Debian patches onto the new upstream in a separate worktree ($NEXT) and
+# check its config loads. $OM IS the running desktop (/usr/share/omarchy) and is not touched:
+# a conflict never leaves it half-rebased (Hyprland reloading it mid-rebase broke the Lua
+# config), and the prepared update can be reviewed — and fixed there — before it goes live.
+prepare_omarchy() {
+  say "Preparing the Omarchy update (Debian patches on the new Omarchy, in a separate copy)"
   cd "$OM"
-  [[ -n $(git status --porcelain --untracked-files=no) ]] && die "uncommitted changes in $OM — commit or stash them first"
+  clean_or_die
+  discard_pending
   git fetch -q origin
-  local before upstream work new
+  local before upstream new
   before=$(git rev-parse HEAD)
-  upstream=origin/HEAD
-  git rev-parse -q --verify "$upstream" >/dev/null || upstream="origin/$(git remote show origin | sed -n 's/.*HEAD branch: //p')"
-  # This checkout IS the running desktop (/usr/share/omarchy). Rebase and verify in a
-  # throwaway worktree, so a conflict never leaves the live files half-rebased (Hyprland
-  # reloading them mid-rebase broke the Lua config), then swap the result in in one go.
-  work=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-rebase.XXXXXX")
-  git worktree add -q --detach "$work" HEAD
-  if ! git -C "$work" rebase -q "$upstream" >/dev/null 2>&1; then
-    git -C "$work" rebase --abort 2>/dev/null || true
-    git worktree remove --force "$work"
+  upstream=$(upstream_ref)
+  mkdir -p "${NEXT%/*}" "${PENDING%/*}"
+  git worktree add -q --detach "$NEXT" HEAD
+  if ! git -C "$NEXT" rebase -q "$upstream" >/dev/null 2>&1; then
+    git -C "$NEXT" rebase --abort 2>/dev/null || true
+    discard_pending
     die "a Debian patch no longer applies on the new Omarchy — nothing was changed. Ask Claude to refresh the port."
   fi
-  new=$(git -C "$work" rev-parse HEAD)
-  if [[ $new != "$before" ]]; then
-    say "Checking the new Hyprland config"
-    if ! OMARCHY_PATH=$work Hyprland --verify-config -c "$HOME/.config/hypr/hyprland.lua" 2>&1 | grep -q "config ok"; then
-      git worktree remove --force "$work"
-      die "the new Omarchy config doesn't load on this Hyprland — nothing was changed. Ask Claude to refresh the port."
-    fi
-    git worktree remove --force "$work"
-    git update-ref refs/omarchy/pre-update "$before"   # keeps the old port reachable for rollback
-    git reset -q --hard "$new"
-    mkdir -p "${LAST_UPDATE%/*}"
-    printf 'before=%s\nafter=%s\nold_base=%s\nnew_base=%s\nwhen=%s\n' "$before" "$new" \
-      "$(git merge-base "$before" "$upstream")" "$(git merge-base "$new" "$upstream")" "$(date '+%A %-d %B %H:%M')" >"$LAST_UPDATE"
-    git log --oneline "$(last_update old_base)..$(last_update new_base)" | head -20 | sed 's/^/    /'
-    command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
-  else
-    git worktree remove --force "$work"
+  new=$(git -C "$NEXT" rev-parse HEAD)
+  if [[ $new == "$before" ]]; then
+    discard_pending
     say "Omarchy is already up to date"
+    return 0
+  fi
+  say "Checking the new Hyprland config"
+  if ! verify_config "$NEXT"; then
+    discard_pending
+    die "the new Omarchy config doesn't load on this Hyprland — nothing was changed. Ask Claude to refresh the port."
+  fi
+  printf 'before=%s\nold_base=%s\nnew_base=%s\nprepared=%s\n' "$before" \
+    "$(git merge-base "$before" "$upstream")" "$(git merge-base "$new" "$upstream")" "$(date '+%A %-d %B %H:%M')" >"$PENDING"
+  say "New in Omarchy:"
+  git log --oneline "$(pending old_base)..$(pending new_base)" | head -20 | sed 's/^/    /'
+}
+
+# Step 2: swap the prepared update (including any fixes committed in $NEXT during review)
+# in as the live port, in one reset.
+apply_omarchy() {
+  cd "$OM"
+  if [[ ! -f $PENDING || ! -d $NEXT ]]; then  # nothing new was prepared
+    backup_port "$(git rev-parse HEAD)"
+    return 0
+  fi
+  local before new
+  before=$(pending before)
+  clean_or_die
+  if [[ $(git rev-parse HEAD) != "$before" ]]; then
+    discard_pending
+    die "Omarchy changed after the update was prepared — nothing was applied. Run the update again."
+  fi
+  [[ -z $(git -C "$NEXT" status --porcelain --untracked-files=no) ]] ||
+    die "the prepared update has uncommitted changes in $NEXT — commit or discard them first"
+  new=$(git -C "$NEXT" rev-parse HEAD)
+  verify_config "$NEXT" || die "the prepared update's config doesn't load — nothing was applied. Ask Claude to fix it in $NEXT."
+  say "Applying the Omarchy update"
+  git update-ref refs/omarchy/pre-update "$before"   # keeps the old port reachable for rollback
+  git reset -q --hard "$new"
+  mkdir -p "${LAST_UPDATE%/*}"
+  printf 'before=%s\nafter=%s\nold_base=%s\nnew_base=%s\nwhen=%s\n' "$before" "$new" \
+    "$(pending old_base)" "$(pending new_base)" "$(date '+%A %-d %B %H:%M')" >"$LAST_UPDATE"
+  discard_pending
+  if command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true
+    sleep 2
+    [[ -z $(hyprctl configerrors 2>/dev/null | tr -d '[:space:]') ]] ||
+      warn "Hyprland reports config errors after the update (hyprctl configerrors) — undo it with omarchy-update-undo, or let Claude fix it"
   fi
   backup_port "$before"
+}
+
+update_omarchy() {
+  # --prepared: apply what `omarchy-debian prepare` left (and Claude reviewed); else prepare now.
+  [[ ${1:-} == --prepared ]] || prepare_omarchy
+  apply_omarchy
 }
 
 last_update() { sed -n "s/^$1=//p" "$LAST_UPDATE" 2>/dev/null; }
@@ -311,11 +369,15 @@ rollback_omarchy() {
   say "Done — Omarchy is back to how it was before $when. Apps and Debian packages keep their new versions."
 }
 
-# Upstream files the last update changed that can alter how the desktop behaves: Hyprland
+# Upstream files the prepared update (or else the last one) changed that can alter how the desktop behaves: Hyprland
 # config and keybindings, the shell (bar, menus, panels), and the menu/dictation/launch scripts.
 risky_changes() {
-  [[ -f $LAST_UPDATE ]] || return 0
-  git -C "$OM" diff --name-only "$(last_update old_base)" "$(last_update new_base)" |
+  local range
+  if [[ -f $PENDING ]]; then range="$(pending old_base) $(pending new_base)"
+  elif [[ -f $LAST_UPDATE ]]; then range="$(last_update old_base) $(last_update new_base)"
+  else return 0; fi
+  # shellcheck disable=SC2086
+  git -C "$OM" diff --name-only $range |
     grep -E '^(default/hypr/|config/hypr/|shell/|bin/omarchy-(menu|dictation|hyprland|launch|restart|toggle))|\.lua$' |
     grep -vE '/i18n/|^shell/.*\.md$' || true
 }
@@ -367,8 +429,10 @@ build_steps() {
 
 case ${1:-help} in
   __build-steps) shift; build_steps "$@" ;;
+  prepare) prepare_omarchy ;;
+  discard) discard_pending; say "Discarded the prepared update — nothing was changed." ;;
   update)
-    update_omarchy
+    shift; update_omarchy "$@"
     # The root-owned helper copies (system-setup steps 10 and 29) don't follow the checkout.
     for f in omarchy-sudo-passwordless omarchy-security-functions omarchy-theme-set-browser-policy omarchy-install-chromium-claude; do
       if ! cmp -s "$OM/bin/$f" "/usr/bin/$f"; then
@@ -397,5 +461,5 @@ case ${1:-help} in
   rollback) rollback_omarchy ;;
   risky-changes) risky_changes ;;
   apps) shift; apps_cmd "$@" ;;
-  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

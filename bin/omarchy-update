@@ -18,39 +18,56 @@ if [[ -f /etc/debian_version ]]; then
   ( while sleep 60; do kill -0 $$ 2>/dev/null && sudo -n true 2>/dev/null || exit 0; done ) &
   keepalive=$!
   trap 'kill "$keepalive" 2>/dev/null' EXIT
-  # A failed or warning run (a patch that no longer rebases, an app that stops building)
-  # offers to open Claude on the log. A clean run that changed Hyprland config, keybindings
-  # or the shell offers a Claude review (the config check only proves it loads); a clean
-  # run that touched none of those (translations, docs, apps) never starts Claude.
-  pre_update=$(git -C "$OMARCHY_PATH" rev-parse HEAD 2>/dev/null || true)
-  log=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update.log
-  mkdir -p "${log%/*}"
+  # Interactive runs prepare the Omarchy update in a separate copy first (live desktop
+  # untouched). If it changes Hyprland config, keybindings or the shell, Claude can review
+  # it there — and fix it — before you're asked to apply it. A failed or warning run offers
+  # Claude on the log. -y / unattended runs prepare and apply in one go, without Claude.
+  od="$OMARCHY_PATH/debian/omarchy-debian"
+  state=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy
+  log=$state/update.log
+  mkdir -p "$state"
   set -o pipefail
-  if OMARCHY_DEBIAN_WITH_APT=1 "$OMARCHY_PATH/debian/omarchy-debian" update 2>&1 | tee "$log"; then
-    omarchy_ok=1
-  else
-    omarchy_ok=0
-  fi
-  if (( !omarchy_ok )) || grep -q '==> WARNING:' "$log"; then
-    if [[ ${1:-} != "-y" && -t 0 ]]; then
+  interactive=0
+  [[ ${1:-} != "-y" && -t 0 ]] && interactive=1
+  offer_fix() {
+    if (( interactive )); then
       read -rp $'\nThe Omarchy part had problems. Open Claude to fix them? [Y/n] ' answer
       [[ $answer =~ ^[Nn] ]] || omarchy-update-claude "$log" || true
     else
       echo "The Omarchy part had problems — run: omarchy-update-claude $log"
     fi
-  elif [[ $(git -C "$OMARCHY_PATH" rev-parse HEAD 2>/dev/null) != "$pre_update" ]]; then
-    risky=$("$OMARCHY_PATH/debian/omarchy-debian" risky-changes 2>/dev/null || true)
-    if [[ -n $risky ]]; then
-      printf '\nThis update changed Hyprland config, keybindings or the shell (%s files):\n' "$(wc -l <<<"$risky")"
-      head -12 <<<"$risky" | sed 's/^/    /'
-      if [[ ${1:-} != "-y" && -t 0 ]]; then
-        read -rp $'\nLet Claude check it against your setup? [Y/n] ' answer
-        [[ $answer =~ ^[Nn] ]] || omarchy-update-claude --review "$log" || true
-      else
-        echo "Have Claude check it with: omarchy-update-claude --review   (undo: omarchy-update-undo)"
+  }
+  apply=1
+  update_args=()
+  if (( interactive )); then
+    if "$od" prepare 2>&1 | tee "$log"; then
+      update_args=(--prepared)
+      risky=$("$od" risky-changes 2>/dev/null || true)
+      if [[ -f $state/pending-update && -n $risky ]]; then
+        printf '\nThis update changes Hyprland config, keybindings or the shell (%s files):\n' "$(wc -l <<<"$risky")"
+        head -12 <<<"$risky" | sed 's/^/    /'
+        read -rp $'\nLet Claude review it before it is applied? [Y/n] ' answer
+        [[ $answer =~ ^[Nn] ]] || omarchy-update-claude --pre-review "$log" || true
+        read -rp $'\nApply this Omarchy update now? [Y/n] ' answer
+        if [[ $answer =~ ^[Nn] ]]; then
+          "$od" discard
+          echo "Omarchy stays as it is; the update is offered again next time."
+          apply=0
+        fi
       fi
+    else
+      offer_fix
+      apply=0  # Claude reruns the update itself once it's fixed
+    fi
+  else
+    : >"$log"
+  fi
+  if (( apply )); then
+    if ! OMARCHY_DEBIAN_WITH_APT=1 "$od" update "${update_args[@]}" 2>&1 | tee -a "$log" || grep -q '==> WARNING:' "$log"; then
+      offer_fix
     fi
   fi
+  omarchy-shell -q omarchy.system-update refresh >/dev/null 2>&1 || true
   printf '\e[1;32m==>\e[0;1m Updating Debian packages\e[0m\n'
   sudo apt update
   if [[ $1 == "-y" ]]; then
