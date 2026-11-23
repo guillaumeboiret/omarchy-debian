@@ -243,20 +243,33 @@ update_omarchy() {
   cd "$OM"
   [[ -n $(git status --porcelain --untracked-files=no) ]] && die "uncommitted changes in $OM — commit or stash them first"
   git fetch -q origin
-  local before; before=$(git rev-parse HEAD)
-  if ! git rebase -q origin/HEAD 2>/dev/null && ! git rebase -q "origin/$(git remote show origin | sed -n 's/.*HEAD branch: //p')"; then
-    git rebase --abort 2>/dev/null || true
+  local before upstream work new
+  before=$(git rev-parse HEAD)
+  upstream=origin/HEAD
+  git rev-parse -q --verify "$upstream" >/dev/null || upstream="origin/$(git remote show origin | sed -n 's/.*HEAD branch: //p')"
+  # This checkout IS the running desktop (/usr/share/omarchy). Rebase and verify in a
+  # throwaway worktree, so a conflict never leaves the live files half-rebased (Hyprland
+  # reloading them mid-rebase broke the Lua config), then swap the result in in one go.
+  work=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-rebase.XXXXXX")
+  git worktree add -q --detach "$work" HEAD
+  if ! git -C "$work" rebase -q "$upstream" >/dev/null 2>&1; then
+    git -C "$work" rebase --abort 2>/dev/null || true
+    git worktree remove --force "$work"
     die "a Debian patch no longer applies on the new Omarchy — nothing was changed. Ask Claude to refresh the port."
   fi
-  if [[ $(git rev-parse HEAD) != "$before" ]]; then
+  new=$(git -C "$work" rev-parse HEAD)
+  if [[ $new != "$before" ]]; then
     say "Checking the new Hyprland config"
-    if ! OMARCHY_PATH=/usr/share/omarchy Hyprland --verify-config -c "$HOME/.config/hypr/hyprland.lua" 2>&1 | grep -q "config ok"; then
-      git reset -q --hard "$before"
-      die "the new Omarchy config doesn't load on this Hyprland — rolled back. Ask Claude to refresh the port."
+    if ! OMARCHY_PATH=$work Hyprland --verify-config -c "$HOME/.config/hypr/hyprland.lua" 2>&1 | grep -q "config ok"; then
+      git worktree remove --force "$work"
+      die "the new Omarchy config doesn't load on this Hyprland — nothing was changed. Ask Claude to refresh the port."
     fi
+    git worktree remove --force "$work"
+    git reset -q --hard "$new"
     git log --oneline "$before..HEAD" | grep -v "Debian port" | head -20 | sed 's/^/    /'
     command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && { hyprctl reload >/dev/null; omarchy-restart-shell >/dev/null 2>&1 || true; }
   else
+    git worktree remove --force "$work"
     say "Omarchy is already up to date"
   fi
   backup_port "$before"
