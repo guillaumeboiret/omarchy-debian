@@ -22,6 +22,9 @@ upstream=$(git -C "$OM" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}
 behind=$(git -C "$OM" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
 echo "$behind new upstream commits"
 if (( behind > 0 )); then
-  notify-send -a Omarchy "Omarchy update available" \
-    "$behind new changes this week. Click the update icon in the bar when you're ready." || true
+  # Omarchy's logo glyph (U+E900 in its icon font) as UTF-8 bytes: works whatever the locale.
+  # Clicking the notification starts the update, like the bar's update icon.
+  /usr/share/omarchy/bin/omarchy-notification-send -u normal -g $'\xee\xa4\x80' "Omarchy update available" \
+    "$behind new changes this week — click to review and update" \
+    --exec omarchy-launch-floating-terminal-with-presentation omarchy-update || true
 fi
