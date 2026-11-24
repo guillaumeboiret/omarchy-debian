@@ -44,6 +44,15 @@ nvim | vim | vi | nano | micro | hx | helix | fresh)
     exec omarchy-launch-tui "$editor" -- "$@"
   fi
   ;;
+emacs)
+  # Inline ($EDITOR: git commit, sudoedit) edits in the terminal and waits,
+  # like the TUI editors; otherwise Emacs opens its own window.
+  if [[ $inline == "true" ]]; then
+    exec "$editor" -nw "$@"
+  else
+    exec setsid uwsm-app -- "$editor" "$@"
+  fi
+  ;;
 *)
   exec setsid uwsm-app -- "$editor" -- "$@"
   ;;
