@@ -211,16 +211,24 @@ function normalizeLayout(rects) {
 
 // Along an edge it shares with another display: keep at least a pixel of the
 // edge shared, and take the other's start, center or end when within snap.
+// The center pulls from half again as far and wins a tie, since lining a
+// smaller display up under the middle of a bigger one is the usual aim.
 function alignAlong(pos, size, start, length, snap) {
   var aligned = Math.round(Math.max(start - size + 1, Math.min(start + length - 1, pos)))
-  var targets = [start, start + (length - size) / 2, start + length - size]
+  var targets = [
+    { at: start + (length - size) / 2, reach: snap * 1.5 },
+    { at: start, reach: snap },
+    { at: start + length - size, reach: snap }
+  ]
   var best = aligned
-  var bestDistance = snap
+  var bestScore = Infinity
   for (var i = 0; i < targets.length; i++) {
-    var distance = Math.abs(aligned - targets[i])
-    if (distance <= bestDistance) {
-      best = Math.round(targets[i])
-      bestDistance = distance
+    var distance = Math.abs(aligned - targets[i].at)
+    if (distance > targets[i].reach) continue
+    var score = distance / targets[i].reach
+    if (score < bestScore) {
+      best = Math.round(targets[i].at)
+      bestScore = score
     }
   }
   return best
@@ -228,8 +236,8 @@ function alignAlong(pos, size, start, length, snap) {
 
 // Where a display dropped with its corner at (x, y) lands: against a side of
 // one of the others, at the spot nearest the drop that overlaps nothing.
-// Returns the whole layout, normalized, or null when nothing fits.
-function dropDisplay(rects, name, x, y, snap) {
+// Returns the moved display's rect, in the layout's own space, or null.
+function landDisplay(rects, name, x, y, snap) {
   var all = copyRects(rects)
   var moving = null
   var others = []
@@ -261,9 +269,34 @@ function dropDisplay(rects, name, x, y, snap) {
       }
     }
   }
-  if (!best) return null
+  return best
+}
 
-  return normalizeLayout(all.map(function(rect) { return rect.name === name ? best : rect }))
+// The same drop, as the whole layout, normalized, or null when nothing fits.
+function dropDisplay(rects, name, x, y, snap) {
+  var best = landDisplay(rects, name, x, y, snap)
+  if (!best) return null
+  return normalizeLayout(copyRects(rects).map(function(rect) { return rect.name === name ? best : rect }))
+}
+
+// The line through the middle of a display that `placed` is centered on and
+// touches, for the map to draw while dragging; null when it centers on none.
+function centerGuide(rects, placed) {
+  for (var i = 0; placed && i < rects.length; i++) {
+    var other = rects[i]
+    if (other.name === placed.name) continue
+    var touchesY = placed.y + placed.h === other.y || other.y + other.h === placed.y
+    var touchesX = placed.x + placed.w === other.x || other.x + other.w === placed.x
+    var centerX = other.x + other.w / 2
+    var centerY = other.y + other.h / 2
+    if (touchesY && Math.abs(placed.x + placed.w / 2 - centerX) <= 1)
+      return { vertical: true, at: centerX,
+        from: Math.min(placed.y, other.y), to: Math.max(placed.y + placed.h, other.y + other.h) }
+    if (touchesX && Math.abs(placed.y + placed.h / 2 - centerY) <= 1)
+      return { vertical: false, at: centerY,
+        from: Math.min(placed.x, other.x), to: Math.max(placed.x + placed.w, other.x + other.w) }
+  }
+  return null
 }
 
 // Move a display to one side of all the others, centered along it.

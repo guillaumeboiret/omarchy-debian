@@ -1535,7 +1535,9 @@ Panel {
 
   // The displays drawn where they sit, at their relative sizes. Drag one
   // against another's side to move it there; it lines up with that display's
-  // start, center or end when dropped near one. Clicking one shows it above.
+  // start, center or end when dropped near one. While dragging, a display
+  // close to where it would land is pulled there (a magnet), and a line marks
+  // the middle of the display it centers on. Clicking one shows it above.
   component LayoutMap: Item {
     id: map
     // The keyboard is on the map: ctrl+h/j/k/l moves the shown display.
@@ -1574,6 +1576,25 @@ Panel {
     implicitHeight: bounds.h * ratio + stackDepth * stackStep
     readonly property real offsetX: (width - bounds.w * ratio - stackDepth * stackStep) / 2
     readonly property real offsetY: (height - bounds.h * ratio + stackDepth * stackStep) / 2
+    // How far, in map pixels, a dragged display is pulled to where it would land.
+    readonly property real magnet: Style.space(14)
+    // The center line the dragged display lines up on, in layout space, or null.
+    property var guide: null
+
+    Rectangle {
+      visible: map.guide !== null
+      z: 2
+      color: Commons.Color.accent
+      opacity: 0.8
+      x: !map.guide ? 0 : map.guide.vertical
+        ? map.offsetX + (map.guide.at - map.bounds.x) * map.ratio - 1
+        : map.offsetX + (map.guide.from - map.bounds.x) * map.ratio - Style.space(4)
+      y: !map.guide ? 0 : map.guide.vertical
+        ? map.offsetY + (map.guide.from - map.bounds.y) * map.ratio - Style.space(4)
+        : map.offsetY + (map.guide.at - map.bounds.y) * map.ratio - 1
+      width: !map.guide ? 0 : map.guide.vertical ? 2 : (map.guide.to - map.guide.from) * map.ratio + Style.space(8)
+      height: !map.guide ? 0 : map.guide.vertical ? (map.guide.to - map.guide.from) * map.ratio + Style.space(8) : 2
+    }
 
     Repeater {
       model: root.shownRects
@@ -1587,10 +1608,36 @@ Panel {
         property real dragY: 0
         property real pressX: 0
         property real pressY: 0
+        // The magnet's pull on top of the drag, in map pixels.
+        property real pullX: 0
+        property real pullY: 0
         readonly property bool dragging: dragX !== 0 || dragY !== 0
 
-        x: map.offsetX + (modelData.x - map.bounds.x) * map.ratio + dragX
-        y: map.offsetY + (modelData.y - map.bounds.y) * map.ratio + dragY
+        x: map.offsetX + (modelData.x - map.bounds.x) * map.ratio + dragX + pullX
+        y: map.offsetY + (modelData.y - map.bounds.y) * map.ratio + dragY + pullY
+
+        // Pull the dragged display onto where it would land when it's close.
+        function attract() {
+          var rawX = modelData.x + dragX / map.ratio
+          var rawY = modelData.y + dragY / map.ratio
+          var landed = Model.landDisplay(root.layoutRects, modelData.name, rawX, rawY, map.magnet / map.ratio)
+          if (landed && Math.hypot(landed.x - rawX, landed.y - rawY) * map.ratio <= map.magnet) {
+            pullX = (landed.x - rawX) * map.ratio
+            pullY = (landed.y - rawY) * map.ratio
+            map.guide = Model.centerGuide(root.layoutRects, landed)
+          } else {
+            pullX = 0
+            pullY = 0
+            map.guide = null
+          }
+        }
+        function stopDrag() {
+          dragX = 0
+          dragY = 0
+          pullX = 0
+          pullY = 0
+          map.guide = null
+        }
         width: Math.max(4, modelData.w * map.ratio - 2)
         height: Math.max(4, modelData.h * map.ratio - 2)
         z: dragging ? 1 : 0
@@ -1670,6 +1717,7 @@ Panel {
             var point = mapToItem(map, mouse.x, mouse.y)
             screenRect.dragX = point.x - screenRect.pressX
             screenRect.dragY = point.y - screenRect.pressY
+            screenRect.attract()
           }
           onReleased: function(mouse) {
             if (mouse.button === Qt.RightButton) return
@@ -1679,16 +1727,12 @@ Panel {
             var x = map.bounds.x + (screenRect.x - map.offsetX) / map.ratio
             var y = map.bounds.y + (screenRect.y - map.offsetY) / map.ratio
             // Reset first: applying the move redraws the map, this box included.
-            screenRect.dragX = 0
-            screenRect.dragY = 0
-            var snap = Style.space(8) / map.ratio
+            screenRect.stopDrag()
+            var snap = map.magnet / map.ratio
             if (moved) root.applyLayout(function() { return Model.dropDisplay(root.layoutRects, name, x, y, snap) })
             else root.selectDisplay(name)
           }
-          onCanceled: {
-            screenRect.dragX = 0
-            screenRect.dragY = 0
-          }
+          onCanceled: screenRect.stopDrag()
         }
       }
     }
