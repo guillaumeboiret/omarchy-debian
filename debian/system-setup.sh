@@ -120,6 +120,14 @@ if ! grep -q 'fbcon=font:TER16x32' /etc/default/grub; then
   sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 fbcon=font:TER16x32"/' /etc/default/grub
   update-grub
 fi
+#     fbcon=vc:2-63: the kernel text console stays off tty1. With HDMI plugged in at boot, fbcon
+#     drawing tty1 on the Apple DRM framebuffer while the HDMI link comes up (HPD drops and returns)
+#     deadlocks on the console lock: plymouth, console-setup and systemd all freeze, no login screen.
+#     The boot log stays in journalctl and on Ctrl+Alt+F2.
+if ! grep -q 'fbcon=vc:2-63' /etc/default/grub; then
+  sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 fbcon=vc:2-63"/' /etc/default/grub
+  update-grub
+fi
 sed -i -e 's/^FONTFACE=.*/FONTFACE="Terminus"/' -e 's/^FONTSIZE=.*/FONTSIZE="16x32"/' /etc/default/console-setup
 setupcon --save-only 2>/dev/null || true
 
