@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -29,6 +30,9 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property var apps: []
+  // Debian port: connected coding agents for the "Ask <agent>" tiles, read
+  // each time the grid opens, so a new sign-in or default agent shows at once.
+  property var agents: []
 
   readonly property int iconSize: Math.round(56 * Style.fontScale)
   readonly property int labelHeight: Math.ceil(labelMetrics.height) * 2
@@ -68,6 +72,7 @@ Item {
       grid.positionViewAtBeginning()
     }
     root.opened = true
+    agentList.running = true
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -97,7 +102,7 @@ Item {
   }
 
   function requestUninstall(entry) {
-    if (!entry || entry.askClaude) return
+    if (!entry || entry.askAgent) return
     root.menuEntry = null
     uninstallConfirm.selectedIndex = 1
     root.uninstallEntry = entry
@@ -118,7 +123,7 @@ Item {
   }
 
   function openMenu(entry, point) {
-    if (entry && entry.askClaude) return
+    if (entry && entry.askAgent) return
     root.menuEntry = entry
     root.menuPoint = point
   }
@@ -131,7 +136,7 @@ Item {
   function rebuild() {
     root.appsStale = false
     var rows = root.appLibrary ? root.appLibrary.sortedEntries(root.filterText) : []
-    root.apps = DockModel.gridCells(rows.map(function(row) { return row.entry }), root.filterText)
+    root.apps = DockModel.gridCells(rows.map(function(row) { return row.entry }), root.filterText, root.agents)
     root.selectedIndex = Math.max(0, Math.min(root.selectedIndex, root.apps.length - 1))
     grid.positionViewAtBeginning()
   }
@@ -158,9 +163,9 @@ Item {
 
   function launch(index) {
     var entry = root.apps[index]
-    if (entry && entry.askClaude) {
+    if (entry && entry.askAgent) {
       root.close()
-      Util.execArgv(DockModel.askClaudeArgv(entry.prompt))
+      Util.execArgv(DockModel.askAgentArgv(entry.askAgent, entry.prompt))
       return
     }
     if (!entry || !root.appLibrary) return
@@ -184,6 +189,17 @@ Item {
   // Apps installed or removed while the grid is closed are picked up when it
   // next opens.
   property bool appsStale: false
+
+  Process {
+    id: agentList
+    command: ["omarchy-agent-connected"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        root.agents = DockModel.parseAgents(this.text)
+        if (root.opened && root.filterText.trim()) root.refresh()
+      }
+    }
+  }
 
   Connections {
     target: root.appLibrary
@@ -350,7 +366,7 @@ Item {
               required property int index
               required property var modelData
               readonly property bool selected: index === root.selectedIndex
-              readonly property bool askClaude: !!cell.modelData.askClaude
+              readonly property bool askAgent: !!cell.modelData.askAgent
               property point pressPoint
               // A press that wanders is a drag in the making, not a click.
               property bool moved: false
@@ -390,7 +406,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - (root.cellGutter + Style.spacing.md) * 2
                 textFormat: Text.PlainText
-                text: cell.askClaude ? cell.modelData.name : (root.appLibrary ? root.appLibrary.entryName(cell.modelData) : "")
+                text: cell.askAgent ? cell.modelData.name : (root.appLibrary ? root.appLibrary.entryName(cell.modelData) : "")
                 color: cell.selected ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.body
@@ -401,16 +417,16 @@ Item {
                 elide: Text.ElideRight
               }
 
-              // The focused app reveals its version beneath its name; Ask
-              // Claude always shows the prompt it will send.
+              // The focused app reveals its version beneath its name; an
+              // "Ask <agent>" tile always shows the prompt it will send.
               Text {
                 anchors.top: label.bottom
                 anchors.topMargin: Style.spacing.xs * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: label.width
-                visible: cell.selected || cell.askClaude
+                visible: cell.selected || cell.askAgent
                 textFormat: Text.PlainText
-                text: cell.askClaude ? "“" + cell.modelData.prompt + "”" : (root.appLibrary ? root.appLibrary.version(cell.modelData) : "")
+                text: cell.askAgent ? "“" + cell.modelData.prompt + "”" : (root.appLibrary ? root.appLibrary.version(cell.modelData) : "")
                 color: Commons.Color.menu.text
                 opacity: 0.58
                 font.family: Style.font.menuFamily
@@ -434,7 +450,7 @@ Item {
                 onPositionChanged: function(event) {
                   if (!(pressedButtons & Qt.LeftButton)) return
                   if (!cell.moved && Math.hypot(event.x - cell.pressPoint.x, event.y - cell.pressPoint.y) > Style.space(4)) cell.moved = true
-                  if (cell.moved && !cell.askClaude) root.dragTo(cell.modelData, cell.mapToItem(panel.contentItem, event.x, event.y))
+                  if (cell.moved && !cell.askAgent) root.dragTo(cell.modelData, cell.mapToItem(panel.contentItem, event.x, event.y))
                 }
                 onReleased: function(event) {
                   if (root.dragging && event.button === Qt.LeftButton) root.dropDrag()

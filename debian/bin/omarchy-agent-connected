@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=List the connected coding agents, for the app grid's "Ask <agent>" tiles
+# omarchy:hidden=true
+
+# Debian port. Prints the default agent first ("default<TAB>id", empty when
+# none is chosen), then one "agent<TAB>id<TAB>name" line per agent Omarchy
+# ships a launcher for (default/applications/omarchy-agent-<id>.desktop) that
+# is connected: its usage record says it is signed in ("ready", as the agents
+# panel reads it) and `omarchy default agent --installed` finds its harness.
+# A record goes by provider (cursor for cursor-agent, kiro for kiro-cli).
+# Each one is started by `omarchy-agent --agent <id> --prompt <text>`, which
+# knows how to hand that agent a first prompt.
+
+usage="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
+
+printf 'default\t%s\n' "$(omarchy-default-agent 2>/dev/null)"
+
+for entry in "$OMARCHY_PATH"/default/applications/omarchy-agent-*.desktop; do
+  [[ -f $entry ]] || continue
+  id=${entry##*/omarchy-agent-}
+  id=${id%.desktop}
+  record="$usage/$id.json"
+  [[ -f $record ]] || record="$usage/${id%-*}.json"
+  [[ -f $record ]] && jq -e '.ready == true' "$record" >/dev/null 2>&1 || continue
+  omarchy-default-agent --installed "$id" 2>/dev/null || continue
+  name=$(sed -n 's/^Name=//p' "$entry" | head -n 1)
+  printf 'agent\t%s\t%s\n' "$id" "${name:-$id}"
+done

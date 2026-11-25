@@ -133,23 +133,36 @@ assertEqual(dock.pickClickWindow('workspace', foot, 4), 2, 'a click on a workspa
 assertEqual(dock.pickClickWindow('workspace', foot, 3), 1, 'a click on a workspace app restores a minimized one rather than leaving for another workspace')
 assertEqual(dock.pickClickWindow('workspace', [foot[0], foot[2]], 3), -1, 'a click on a workspace app opens another when none is on this workspace')
 
-// Debian port: the app grid's search always ends with "Ask Claude".
+// Debian port: the app grid's search always ends with one "Ask <agent>" tile
+// per connected agent, the default agent first, then by name.
+const agents = dock.parseAgents([
+  'default\tpi',
+  'agent\tcodex\tCodex',
+  'agent\tpi\tPi',
+  'agent\tamp\tAmp',
+  'agent\tclaude\tClaude Code',
+  'agent\tbad id;rm\tEvil',
+  ''
+].join('\n'))
+assertDeepEqual(agents.map(a => a.id), ['pi', 'amp', 'claude', 'codex'], 'the default agent comes first, then the rest by name, without malformed ids')
+assertDeepEqual(dock.parseAgents('default\t\nagent\tcodex\tCodex\nagent\tclaude\tClaude Code').map(a => a.id), ['claude', 'codex'], 'without a default, agents go by name')
 const apps = [{ id: 'a.desktop', name: 'Alpha' }, { id: 'b.desktop', name: 'Beta' }]
-assertDeepEqual(dock.gridCells(apps, ''), apps, 'the unfiltered app grid has no Ask Claude cell')
-assertDeepEqual(dock.gridCells(apps, '   '), apps, 'a blank search has no Ask Claude cell')
-const noMatch = dock.gridCells([], '  I would like to ')
-assertEqual(noMatch.length, 1, 'a search with no app match shows only Ask Claude')
-assertEqual(noMatch[0].askClaude && noMatch[0].prompt, 'I would like to', 'Ask Claude carries the trimmed query')
-const withMatches = dock.gridCells(apps, 'a')
+assertDeepEqual(dock.gridCells(apps, '', agents), apps, 'the unfiltered app grid has no agent tiles')
+assertDeepEqual(dock.gridCells(apps, '   ', agents), apps, 'a blank search has no agent tiles')
+const noMatch = dock.gridCells([], '  I would like to ', agents)
+assertDeepEqual(noMatch.map(c => c.askAgent), ['pi', 'amp', 'claude', 'codex'], 'a search with no app match shows only the agent tiles, the default first')
+assertEqual(noMatch[0].name, 'Ask Pi', 'an agent tile is named after its launcher')
+assertEqual(noMatch[0].icon, 'omarchy-agent-pi', 'an agent tile uses its launcher icon')
+assertEqual(noMatch[0].prompt, 'I would like to', 'an agent tile carries the trimmed query')
+const withMatches = dock.gridCells(apps, 'a', agents)
 assertDeepEqual(withMatches.slice(0, 2), apps, 'matching apps stay first, so Enter still launches the top app')
-assertEqual(withMatches[2].askClaude, true, 'Ask Claude is the last cell after matching apps')
+assertEqual(withMatches[2].askAgent, 'pi', 'the agent tiles follow the apps, the default first')
 const hostile = `-p "$(touch /tmp/pwned)"; rm -rf ~ 'x'`
 assertDeepEqual(
-  dock.askClaudeArgv(hostile),
-  ['omarchy-launch-terminal', 'claude', '--', hostile],
-  'Ask Claude passes the query as one literal argument after --'
+  dock.askAgentArgv('codex', hostile),
+  ['omarchy-agent', '--agent', 'codex', '--app-id=org.omarchy.codex', '--prompt', hostile],
+  'an agent tile passes the query to omarchy-agent as one literal argument'
 )
-
 JS
 
 home="$TMPDIR/home"

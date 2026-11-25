@@ -228,28 +228,54 @@ function pickClickWindow(mode, windows, workspaceId) {
   return picked < 0 ? -1 : candidates[picked]
 }
 
-// Debian port: Spotlight's "ask Claude" fallback. A search in the app grid
-// always ends with a cell that opens Claude Code with the typed text as its
-// first prompt: the only cell (so Enter runs it) when no app matches, the last
-// one otherwise (Enter still launches the top app; arrows or a click reach it).
-function gridCells(entries, query) {
+// Debian port: Spotlight's "ask an agent" fallback. A search in the app grid
+// always ends with one "Ask <agent>" tile per connected coding agent: the only
+// tiles when no app matches (the default agent first, so Enter asks it), after
+// the matching apps otherwise (Enter still launches the top app).
+
+// `omarchy-agent-connected` output: a "default<TAB>id" line, then
+// "agent<TAB>id<TAB>name" lines. The default agent comes first, then the rest
+// by name.
+function parseAgents(raw) {
+  var defaultAgent = ""
+  var agents = []
+  String(raw || "").split("\n").forEach(function(line) {
+    var fields = line.split("\t")
+    if (fields[0] === "default") defaultAgent = fields[1] || ""
+    else if (fields[0] === "agent" && /^[a-z0-9-]+$/.test(fields[1] || "")) agents.push({ id: fields[1], name: fields[2] || fields[1] })
+  })
+  function rank(agent) {
+    return agent.id === defaultAgent ? 0 : 1
+  }
+  return agents.sort(function(a, b) {
+    if (rank(a) !== rank(b)) return rank(a) - rank(b)
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+  })
+}
+
+function gridCells(entries, query, agents) {
   var cells = (entries || []).slice()
   var prompt = String(query || "").trim()
-  if (prompt) cells.push({ id: "", askClaude: true, name: "Ask Claude", icon: "omarchy-agent-claude", prompt: prompt })
+  if (!prompt) return cells
+  ;(agents || []).forEach(function(agent) {
+    cells.push({ id: "", askAgent: agent.id, name: "Ask " + agent.name, icon: "omarchy-agent-" + agent.id, prompt: prompt })
+  })
   return cells
 }
 
-// An argv vector, never a shell string: the prompt is one argument, and `--`
-// keeps one that starts with a dash from reading as an option. Same terminal
-// launch as Cmd+Return, so the window tiles into the current workspace.
-function askClaudeArgv(prompt) {
-  return ["omarchy-launch-terminal", "claude", "--", String(prompt || "").trim()]
+// An argv vector, never a shell string: the prompt is one argument.
+// omarchy-agent hands it to each agent its own way (after -- or bound to a
+// flag, so a leading dash stays literal), in a new terminal on the current
+// workspace, under the same window class as the agent's dock launcher.
+function askAgentArgv(agentId, prompt) {
+  return ["omarchy-agent", "--agent", String(agentId), "--app-id=org.omarchy." + agentId, "--prompt", String(prompt || "").trim()]
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
+    parseAgents: parseAgents,
     gridCells: gridCells,
-    askClaudeArgv: askClaudeArgv,
+    askAgentArgv: askAgentArgv,
     normalizePosition: normalizePosition,
     isVertical: isVertical,
     normalizeId: normalizeId,
