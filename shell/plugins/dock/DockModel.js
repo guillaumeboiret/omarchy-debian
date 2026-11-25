@@ -228,8 +228,28 @@ function pickClickWindow(mode, windows, workspaceId) {
   return picked < 0 ? -1 : candidates[picked]
 }
 
+// Debian port: Spotlight's "ask Claude" fallback. A search in the app grid
+// always ends with a cell that opens Claude Code with the typed text as its
+// first prompt: the only cell (so Enter runs it) when no app matches, the last
+// one otherwise (Enter still launches the top app; arrows or a click reach it).
+function gridCells(entries, query) {
+  var cells = (entries || []).slice()
+  var prompt = String(query || "").trim()
+  if (prompt) cells.push({ id: "", askClaude: true, name: "Ask Claude", icon: "omarchy-agent-claude", prompt: prompt })
+  return cells
+}
+
+// An argv vector, never a shell string: the prompt is one argument, and `--`
+// keeps one that starts with a dash from reading as an option. Same terminal
+// launch as Cmd+Return, so the window tiles into the current workspace.
+function askClaudeArgv(prompt) {
+  return ["omarchy-launch-terminal", "claude", "--", String(prompt || "").trim()]
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    gridCells: gridCells,
+    askClaudeArgv: askClaudeArgv,
     normalizePosition: normalizePosition,
     isVertical: isVertical,
     normalizeId: normalizeId,

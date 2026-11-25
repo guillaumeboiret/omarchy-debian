@@ -386,6 +386,12 @@ Item {
     // The layout commands call this after changing a workspace's mode.
     function refresh(): void { root.refresh() }
     function apps(): void { appGrid.toggle() }
+    // Debian port: opens the app grid with a search already typed (a query no
+    // app matches shows only "Ask Claude").
+    function search(query: string): void {
+      appGrid.open()
+      appGrid.setFilter(query)
+    }
     // Debian port: brings an auto-hidden dock up for a few seconds, and lists
     // the dock's apps with a * after those that run (the dot under the icon).
     function peek(): void {

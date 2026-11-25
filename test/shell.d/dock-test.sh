@@ -133,6 +133,23 @@ assertEqual(dock.pickClickWindow('workspace', foot, 4), 2, 'a click on a workspa
 assertEqual(dock.pickClickWindow('workspace', foot, 3), 1, 'a click on a workspace app restores a minimized one rather than leaving for another workspace')
 assertEqual(dock.pickClickWindow('workspace', [foot[0], foot[2]], 3), -1, 'a click on a workspace app opens another when none is on this workspace')
 
+// Debian port: the app grid's search always ends with "Ask Claude".
+const apps = [{ id: 'a.desktop', name: 'Alpha' }, { id: 'b.desktop', name: 'Beta' }]
+assertDeepEqual(dock.gridCells(apps, ''), apps, 'the unfiltered app grid has no Ask Claude cell')
+assertDeepEqual(dock.gridCells(apps, '   '), apps, 'a blank search has no Ask Claude cell')
+const noMatch = dock.gridCells([], '  I would like to ')
+assertEqual(noMatch.length, 1, 'a search with no app match shows only Ask Claude')
+assertEqual(noMatch[0].askClaude && noMatch[0].prompt, 'I would like to', 'Ask Claude carries the trimmed query')
+const withMatches = dock.gridCells(apps, 'a')
+assertDeepEqual(withMatches.slice(0, 2), apps, 'matching apps stay first, so Enter still launches the top app')
+assertEqual(withMatches[2].askClaude, true, 'Ask Claude is the last cell after matching apps')
+const hostile = `-p "$(touch /tmp/pwned)"; rm -rf ~ 'x'`
+assertDeepEqual(
+  dock.askClaudeArgv(hostile),
+  ['omarchy-launch-terminal', 'claude', '--', hostile],
+  'Ask Claude passes the query as one literal argument after --'
+)
+
 JS
 
 home="$TMPDIR/home"

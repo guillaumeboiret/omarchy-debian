@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
+import "DockModel.js" as DockModel
 
 // Every app on one grid. Type to narrow it, arrows to move, Enter to launch.
 Item {
@@ -96,7 +97,7 @@ Item {
   }
 
   function requestUninstall(entry) {
-    if (!entry) return
+    if (!entry || entry.askClaude) return
     root.menuEntry = null
     uninstallConfirm.selectedIndex = 1
     root.uninstallEntry = entry
@@ -117,6 +118,7 @@ Item {
   }
 
   function openMenu(entry, point) {
+    if (entry && entry.askClaude) return
     root.menuEntry = entry
     root.menuPoint = point
   }
@@ -129,7 +131,7 @@ Item {
   function rebuild() {
     root.appsStale = false
     var rows = root.appLibrary ? root.appLibrary.sortedEntries(root.filterText) : []
-    root.apps = rows.map(function(row) { return row.entry })
+    root.apps = DockModel.gridCells(rows.map(function(row) { return row.entry }), root.filterText)
     root.selectedIndex = Math.max(0, Math.min(root.selectedIndex, root.apps.length - 1))
     grid.positionViewAtBeginning()
   }
@@ -156,6 +158,11 @@ Item {
 
   function launch(index) {
     var entry = root.apps[index]
+    if (entry && entry.askClaude) {
+      root.close()
+      Util.execArgv(DockModel.askClaudeArgv(entry.prompt))
+      return
+    }
     if (!entry || !root.appLibrary) return
     root.close()
     if (root.dock) root.dock.launchEntry(entry)
@@ -343,6 +350,7 @@ Item {
               required property int index
               required property var modelData
               readonly property bool selected: index === root.selectedIndex
+              readonly property bool askClaude: !!cell.modelData.askClaude
               property point pressPoint
               // A press that wanders is a drag in the making, not a click.
               property bool moved: false
@@ -382,7 +390,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - (root.cellGutter + Style.spacing.md) * 2
                 textFormat: Text.PlainText
-                text: root.appLibrary ? root.appLibrary.entryName(cell.modelData) : ""
+                text: cell.askClaude ? cell.modelData.name : (root.appLibrary ? root.appLibrary.entryName(cell.modelData) : "")
                 color: cell.selected ? Commons.Color.menu.selectedText : Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.body
@@ -393,15 +401,16 @@ Item {
                 elide: Text.ElideRight
               }
 
-              // The focused app reveals its version beneath its name.
+              // The focused app reveals its version beneath its name; Ask
+              // Claude always shows the prompt it will send.
               Text {
                 anchors.top: label.bottom
                 anchors.topMargin: Style.spacing.xs * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: label.width
-                visible: cell.selected
+                visible: cell.selected || cell.askClaude
                 textFormat: Text.PlainText
-                text: root.appLibrary ? root.appLibrary.version(cell.modelData) : ""
+                text: cell.askClaude ? "“" + cell.modelData.prompt + "”" : (root.appLibrary ? root.appLibrary.version(cell.modelData) : "")
                 color: Commons.Color.menu.text
                 opacity: 0.58
                 font.family: Style.font.menuFamily
@@ -425,7 +434,7 @@ Item {
                 onPositionChanged: function(event) {
                   if (!(pressedButtons & Qt.LeftButton)) return
                   if (!cell.moved && Math.hypot(event.x - cell.pressPoint.x, event.y - cell.pressPoint.y) > Style.space(4)) cell.moved = true
-                  if (cell.moved) root.dragTo(cell.modelData, cell.mapToItem(panel.contentItem, event.x, event.y))
+                  if (cell.moved && !cell.askClaude) root.dragTo(cell.modelData, cell.mapToItem(panel.contentItem, event.x, event.y))
                 }
                 onReleased: function(event) {
                   if (root.dragging && event.button === Qt.LeftButton) root.dropDrag()

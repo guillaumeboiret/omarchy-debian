@@ -3,8 +3,8 @@
 // which thumbnail an arrow key moves to.
 
 // Only windows on regular workspaces show. Special workspaces (the scratchpad,
-// the Quake console, the pinned Claude panel, minimized windows) have
-// negative ids and stay out, as do child windows such as dialogs.
+// the Quake console, minimized windows) have negative ids and stay out, as do
+// child windows such as dialogs.
 function isOverviewWindow(window) {
   if (!window || !window.address) return false
   if (window.child === true) return false
