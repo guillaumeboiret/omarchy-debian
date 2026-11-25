@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.overview",
+  "name": "Overview",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Mission Control style overview of every window, grouped by app",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Overview.qml"
+  }
+}

@@ -40,6 +40,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 | Dock          | `omarchy.dock`            | `service`               | `dock/Dock.qml`                       |
+| Overview      | `omarchy.overview`        | `service`               | `overview/Overview.qml`               |
 
 First-party bar-only widgets also carry manifests next to their QML files,
 e.g. `bar/widgets/Workspaces.manifest.json`. Rich popup widgets live in their
@@ -105,6 +106,10 @@ runs inside the long-lived `omarchy-shell` process, replacing the old
 App dock shown on floating workspaces, and hidden on tiled ones and behind a fullscreen window. Floating is not a Hyprland layout, so the dock reads each workspace's mode through `omarchy-hyprland-workspace-layout-current`, caches it, and is told to read again over `omarchy-shell omarchy.dock refresh` by the layout commands. `omarchy-shell omarchy.dock apps` toggles its grid of every app.
 
 Its settings live in the `dock:` subtree of `shell.json`: `position` (`top`, `bottom`, `left` or `right`) and `pinned` (desktop ids). A `shell.json` without pins uses the defaults. `omarchy dock` sets both.
+
+## Overview
+
+Debian port: a macOS Mission Control style overview. Every window on a regular workspace, on every monitor, shows as a live thumbnail (Quickshell `ScreencopyView` on the Hyprland toplevel), grouped by app with the dock's names and icons, the app focused last first. Special workspaces (scratchpad, Quake console, pinned panels, minimized windows) stay out. Thumbnails shrink until everything fits the focused monitor. A click or Enter focuses the window, switching workspace and monitor; Escape or a click on the background closes it. `omarchy-shell omarchy.overview toggle|open|close|status`.
 
 ## Omarchy menu
 
