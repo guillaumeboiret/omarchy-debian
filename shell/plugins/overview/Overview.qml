@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
@@ -24,10 +25,41 @@ Item {
   readonly property var defaultDockConfig: shell && shell.defaultsConfig && shell.defaultsConfig.dock ? shell.defaultsConfig.dock : ({})
 
   property bool opened: false
+  // True from opening until the closing fade has finished: the surface, the
+  // thumbnails and their captures live this long, so nothing vanishes before
+  // the overview has faded out.
+  readonly property bool showing: opened || content.opacity > 0
   property int selectedIndex: 0
   // The layout as it stood when the overview opened, rebuilt when windows come
   // or go while it shows.
   property var arranged: ({ blocks: [], items: [], thumbHeight: 0, width: 0, height: 0 })
+
+  // The background dims like the scratchpad and other special workspaces do:
+  // black at Hyprland's decoration:dim_special, read at startup and on every
+  // config reload.
+  property real dimStrength: 0.6
+
+  Process {
+    id: dimProc
+    command: ["hyprctl", "-j", "getoption", "decoration:dim_special"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var value = Number(JSON.parse(text).float)
+          if (isFinite(value) && value >= 0 && value <= 1) root.dimStrength = value
+        } catch (error) {}
+      }
+    }
+  }
+
+  Component.onCompleted: dimProc.running = true
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (event && String(event.name) === "configreloaded") dimProc.running = true
+    }
+  }
 
   readonly property int screenMargin: Style.space(48)
   readonly property int thumbGap: Style.space(18)
@@ -114,9 +146,11 @@ Item {
   function rearrange() {
     if (!root.opened) return
     var groups = OverviewModel.groupWindows(root.collectWindows())
-    var area = stage.width > 0 ? stage : null
-    var width = area ? area.width : 1200
-    var height = area ? area.height : 800
+    // Laid out for the screen it opens on before the surface maps, so the
+    // first frame already has every thumbnail in place.
+    var screen = panel.targetScreen || panel.focusedScreen()
+    var width = Math.max(1, (screen ? screen.width : 1200) - root.screenMargin * 2)
+    var height = Math.max(1, (screen ? screen.height : 800) - root.screenMargin * 2)
     root.arranged = OverviewModel.layout(groups, width, height, {
       gap: root.thumbGap,
       groupGap: root.groupGap,
@@ -128,23 +162,56 @@ Item {
     root.selectedIndex = Math.max(0, Math.min(root.selectedIndex, root.arranged.items.length - 1))
   }
 
+  // The window that had focus when the overview opened. Closing without
+  // picking a window gives focus back to it: Hyprland otherwise refocuses by
+  // its own rules once the overview lets go of the keyboard, and can land on
+  // another window, such as one under a shown special workspace.
+  property string returnAddress: ""
+
+  function normalizedAddress(value) {
+    var address = String(value || "")
+    return address && address.indexOf("0x") !== 0 ? "0x" + address : address
+  }
+
+  Timer {
+    id: restoreFocus
+    interval: 80
+    onTriggered: {
+      var active = Hyprland.activeToplevel
+      var current = active ? root.normalizedAddress(active.address) : ""
+      if (!root.opened && root.returnAddress && current !== root.returnAddress)
+        Util.execDetached("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ window = \"address:" + root.returnAddress + "\" })"))
+    }
+  }
+
   function open() {
+    var active = Hyprland.activeToplevel
+    root.returnAddress = active ? root.normalizedAddress(active.address) : ""
     // focusHistoryID and the window sizes come from Hyprland's client list,
     // which Quickshell only reads when asked.
     Hyprland.refreshToplevels()
     root.selectedIndex = 0
     root.opened = true
     root.rearrange()
+    // Thumbnails show their capture, or the app icon if none came by now.
+    captureGrace.restart()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
+    if (!root.opened) return
     root.opened = false
+    restoreFocus.restart()
   }
 
   function toggle() {
     if (root.opened) root.close()
     else root.open()
+  }
+
+  Timer {
+    id: captureGrace
+    interval: 250
   }
 
   // Coalesce the bursts of change signals a refresh brings into one layout.
@@ -177,6 +244,7 @@ Item {
   function activate(item) {
     if (!item || !item.window) return
     var address = String(item.window.address || "")
+    root.returnAddress = ""
     root.close()
     if (!address) return
     if (address.indexOf("0x") !== 0) address = "0x" + address
@@ -225,190 +293,214 @@ Item {
 
   OverlayWindow {
     id: panel
-    shown: root.opened
+    shown: root.showing
+    // Closing hands the keyboard back at once, while the overview fades out.
+    shownKeyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     WlrLayershell.namespace: "omarchy-overview"
 
-    // Dimmed well past the menu scrim, so the thumbnails stand out from the
-    // windows behind them.
-    Rectangle {
-      anchors.fill: parent
-      color: Util.alpha(Commons.Color.menu.background, 0.88)
-    }
-
-    // A click on the background closes the overview without changing focus.
-    MouseArea {
-      anchors.fill: parent
-      acceptedButtons: Qt.LeftButton | Qt.RightButton
-      onClicked: root.close()
-    }
-
+    // One fade in (the thumbnails also grow slightly), faster out (Hyprland's layer fade is off
+    // for this surface). It starts once the surface has its final size and
+    // scale, so the first visible frame is already laid out.
     Item {
-      id: keyCatcher
+      id: content
       anchors.fill: parent
-      focus: true
+      readonly property bool up: root.opened && panel.contentRevealed
+      opacity: up ? 1 : 0
 
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape || event.key === Qt.Key_LaunchA) root.close()
-        else if (event.key === Qt.Key_Left) root.move("left")
-        else if (event.key === Qt.Key_Right) root.move("right")
-        else if (event.key === Qt.Key_Up) root.move("up")
-        else if (event.key === Qt.Key_Down) root.move("down")
-        else if (event.key === Qt.Key_Tab) root.move("right")
-        else if (event.key === Qt.Key_Backtab) root.move("left")
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
-          root.activate(root.arranged.items[root.selectedIndex])
-        else return
-        event.accepted = true
-      }
-    }
-
-    Flickable {
-      id: stage
-      anchors.fill: parent
-      anchors.margins: root.screenMargin
-      contentWidth: width
-      contentHeight: root.arranged.height
-      interactive: contentHeight > height
-      clip: true
-      onWidthChanged: if (root.opened) rearrangeLater.restart()
-      onHeightChanged: if (root.opened) rearrangeLater.restart()
-
-      Text {
-        anchors.centerIn: parent
-        visible: root.opened && root.arranged.items.length === 0
-        text: "No open windows"
-        color: Commons.Color.menu.text
-        font.family: Style.font.menuFamily
-        font.pixelSize: Style.font.heading
+      Behavior on opacity {
+        NumberAnimation { duration: Style.duration(content.up ? 180 : 120); easing.type: Easing.OutCubic }
       }
 
-      // Group headers: the app's icon and name, as the dock shows it.
-      Repeater {
-        model: root.opened ? root.arranged.blocks : []
+      Rectangle {
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, root.dimStrength)
+      }
 
-        delegate: Row {
-          required property var modelData
-          x: modelData.x + Math.max(0, (modelData.width - implicitWidth) / 2)
-          y: modelData.y
-          height: root.headerHeight
-          spacing: Style.spacing.lg
+      // A click on the background closes the overview without changing focus.
+      MouseArea {
+        anchors.fill: parent
+        enabled: root.opened
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: root.close()
+      }
 
-          Image {
-            anchors.verticalCenter: parent.verticalCenter
-            width: root.iconSize
-            height: root.iconSize
-            sourceSize.width: root.iconSize * 2
-            sourceSize.height: root.iconSize * 2
-            source: root.iconSource(modelData.group.icon)
-            asynchronous: true
-            smooth: true
-          }
+      Item {
+        id: keyCatcher
+        anchors.fill: parent
+        focus: true
 
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: modelData.group.name + (modelData.items.length > 1 ? "  " + modelData.items.length : "")
-            color: Commons.Color.menu.text
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.title
-            font.weight: Font.DemiBold
-          }
+        Keys.onPressed: function(event) {
+          if (event.key === Qt.Key_Escape || event.key === Qt.Key_LaunchA) root.close()
+          else if (event.key === Qt.Key_Left) root.move("left")
+          else if (event.key === Qt.Key_Right) root.move("right")
+          else if (event.key === Qt.Key_Up) root.move("up")
+          else if (event.key === Qt.Key_Down) root.move("down")
+          else if (event.key === Qt.Key_Tab) root.move("right")
+          else if (event.key === Qt.Key_Backtab) root.move("left")
+          else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+            root.activate(root.arranged.items[root.selectedIndex])
+          else return
+          event.accepted = true
         }
       }
 
-      Repeater {
-        id: thumbs
-        model: root.opened ? root.arranged.items : []
+      Flickable {
+        id: stage
+        anchors.fill: parent
+        anchors.margins: root.screenMargin
+        contentWidth: width
+        contentHeight: root.arranged.height
+        interactive: contentHeight > height
+        clip: true
+        // The thumbnails grow in slightly while the dim fades.
+        scale: content.up ? 1 : 0.97
+        Behavior on scale {
+          NumberAnimation { duration: Style.duration(content.up ? 180 : 120); easing.type: Easing.Bezier; easing.bezierCurve: Style.easeOut }
+        }
 
-        delegate: Item {
-          id: thumb
-          required property var modelData
-          required property int index
-          readonly property bool selected: root.selectedIndex === index
-          readonly property bool captured: view.hasContent
+        Text {
+          anchors.centerIn: parent
+          visible: root.opened && root.arranged.items.length === 0
+          text: "No open windows"
+          color: Commons.Color.menu.text
+          font.family: Style.font.menuFamily
+          font.pixelSize: Style.font.heading
+        }
 
-          x: modelData.x
-          y: modelData.y
-          width: modelData.width
-          height: root.arranged.thumbHeight + root.titleHeight
+        // Group headers: the app's icon and name, as the dock shows it.
+        Repeater {
+          model: root.showing ? root.arranged.blocks : []
 
-          Rectangle {
-            id: frame
-            width: parent.width
-            height: root.arranged.thumbHeight
-            radius: Style.cornerRadius
-            color: Util.alpha(Commons.Color.menu.background, 0.92)
-            border.width: thumb.selected ? root.borderWidth : 1
-            border.color: thumb.selected ? Commons.Color.accent : Util.alpha(Commons.Color.menu.text, 0.15)
-            scale: thumbMouse.pressed ? 0.98 : 1
+          delegate: Row {
+            required property var modelData
+            x: modelData.x + Math.max(0, (modelData.width - implicitWidth) / 2)
+            y: modelData.y
+            height: root.headerHeight
+            spacing: Style.spacing.lg
 
-            Behavior on scale { NumberAnimation { duration: Style.duration(90); easing.type: Easing.OutCubic } }
-
-            ScreencopyView {
-              id: view
-              anchors.centerIn: parent
-              captureSource: root.opened && thumb.modelData.window.toplevel ? thumb.modelData.window.toplevel.wayland : null
-              live: true
-              paintCursor: false
-              constraintSize: Qt.size(frame.width - root.borderWidth * 2, frame.height - root.borderWidth * 2)
-              width: implicitWidth
-              height: implicitHeight
-            }
-
-            // Without a capture (yet, or at all), the app's icon stands in.
             Image {
-              anchors.centerIn: parent
-              visible: !view.hasContent
-              width: Math.min(parent.width, parent.height) * 0.4
-              height: width
-              sourceSize.width: width * 2
-              sourceSize.height: height * 2
-              source: root.iconSource(thumb.modelData.window.icon)
+              anchors.verticalCenter: parent.verticalCenter
+              width: root.iconSize
+              height: root.iconSize
+              sourceSize.width: root.iconSize * 2
+              sourceSize.height: root.iconSize * 2
+              source: root.iconSource(modelData.group.icon)
               asynchronous: true
+              smooth: true
             }
 
-            // The workspace the window lives on.
-            Rectangle {
-              anchors.left: parent.left
-              anchors.top: parent.top
-              anchors.margins: Style.spacing.md
-              width: Math.max(height, wsLabel.implicitWidth + Style.spacing.md * 2)
-              height: wsLabel.implicitHeight + Style.spacing.xs * 2
-              radius: height / 2
-              color: Util.alpha(Commons.Color.menu.background, 0.85)
-              visible: thumb.modelData.window.workspaceName !== ""
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.group.name + (modelData.items.length > 1 ? "  " + modelData.items.length : "")
+              color: Commons.Color.menu.text
+              font.family: Style.font.menuFamily
+              font.pixelSize: Style.font.title
+              font.weight: Font.DemiBold
+            }
+          }
+        }
 
-              Text {
-                id: wsLabel
+        Repeater {
+          id: thumbs
+          model: root.showing ? root.arranged.items : []
+
+          delegate: Item {
+            id: thumb
+            required property var modelData
+            required property int index
+            readonly property bool selected: root.selectedIndex === index
+            readonly property bool captured: view.hasContent
+
+            x: modelData.x
+            y: modelData.y
+            width: modelData.width
+            height: root.arranged.thumbHeight + root.titleHeight
+
+            Rectangle {
+              id: frame
+              width: parent.width
+              height: root.arranged.thumbHeight
+              radius: Style.cornerRadius
+              color: Util.alpha(Commons.Color.menu.background, 0.92)
+              border.width: thumb.selected ? root.borderWidth : 1
+              border.color: thumb.selected ? Commons.Color.accent : Util.alpha(Commons.Color.menu.text, 0.15)
+              scale: thumbMouse.pressed ? 0.98 : 1
+
+              Behavior on scale { NumberAnimation { duration: Style.duration(90); easing.type: Easing.OutCubic } }
+
+              ScreencopyView {
+                id: view
                 anchors.centerIn: parent
-                text: thumb.modelData.window.workspaceName
-                color: Commons.Color.menu.text
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.caption
+                captureSource: root.showing && thumb.modelData.window.toplevel ? thumb.modelData.window.toplevel.wayland : null
+                live: true
+                // The first frame fades in rather than popping over the frame.
+                opacity: hasContent ? 1 : 0
+                Behavior on opacity {
+                  NumberAnimation { duration: Style.duration(120); easing.type: Easing.OutCubic }
+                }
+                paintCursor: false
+                constraintSize: Qt.size(frame.width - root.borderWidth * 2, frame.height - root.borderWidth * 2)
+                width: implicitWidth
+                height: implicitHeight
+              }
+
+              // Without a capture (yet, or at all), the app's icon stands in.
+              Image {
+                anchors.centerIn: parent
+                visible: !view.hasContent && !captureGrace.running
+                width: Math.min(parent.width, parent.height) * 0.4
+                height: width
+                sourceSize.width: width * 2
+                sourceSize.height: height * 2
+                source: root.iconSource(thumb.modelData.window.icon)
+                asynchronous: true
+              }
+
+              // The workspace the window lives on.
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: Style.spacing.md
+                width: Math.max(height, wsLabel.implicitWidth + Style.spacing.md * 2)
+                height: wsLabel.implicitHeight + Style.spacing.xs * 2
+                radius: height / 2
+                color: Util.alpha(Commons.Color.menu.background, 0.85)
+                visible: thumb.modelData.window.workspaceName !== ""
+
+                Text {
+                  id: wsLabel
+                  anchors.centerIn: parent
+                  text: thumb.modelData.window.workspaceName
+                  color: Commons.Color.menu.text
+                  font.family: Style.font.menuFamily
+                  font.pixelSize: Style.font.caption
+                }
               }
             }
-          }
 
-          Text {
-            anchors.top: frame.bottom
-            anchors.topMargin: Style.spacing.md
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideRight
-            text: thumb.modelData.window.title || thumb.modelData.window.name
-            color: thumb.selected ? Commons.Color.menu.selectedText : Commons.Color.menu.text
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.body
-          }
+            Text {
+              anchors.top: frame.bottom
+              anchors.topMargin: Style.spacing.md
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: parent.width
+              horizontalAlignment: Text.AlignHCenter
+              elide: Text.ElideRight
+              text: thumb.modelData.window.title || thumb.modelData.window.name
+              color: thumb.selected ? Commons.Color.menu.selectedText : Commons.Color.menu.text
+              font.family: Style.font.menuFamily
+              font.pixelSize: Style.font.body
+            }
 
-          MouseArea {
-            id: thumbMouse
-            anchors.fill: frame
-            hoverEnabled: true
-            acceptedButtons: Qt.LeftButton
-            cursorShape: Qt.PointingHandCursor
-            onEntered: root.selectedIndex = thumb.index
-            onClicked: root.activate(thumb.modelData)
+            MouseArea {
+              id: thumbMouse
+              anchors.fill: frame
+              hoverEnabled: true
+              enabled: root.opened
+              acceptedButtons: Qt.LeftButton
+              cursorShape: Qt.PointingHandCursor
+              onEntered: root.selectedIndex = thumb.index
+              onClicked: root.activate(thumb.modelData)
+            }
           }
         }
       }
