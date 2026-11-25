@@ -258,4 +258,9 @@ install -o root -g root -m 0644 "$OM/etc/tmpfiles.d/omarchy-nopasswd-sudo.conf" 
 #     and xdg-terminal-exec). foot-terminfo stays, ncurses-term depends on it.
 apt-get purge -y foot xterm
 
+# 31. Boot/shutdown logging to diagnose boots that hang (journal readable by the user, journald
+#     flushing every 15 s, systemd debug during boot, 20 s hung-task reports, a shutdown hook saving
+#     the kernel log tail). Nothing changes on screen. Details in boot-logging-setup.sh.
+bash "$OM/debian/boot-logging-setup.sh"
+
 echo "System part done."

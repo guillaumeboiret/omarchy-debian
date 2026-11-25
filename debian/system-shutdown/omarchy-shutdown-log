@@ -1,0 +1,33 @@
+#!/bin/bash
+# Debian port of Omarchy — installed as /usr/lib/systemd/system-shutdown/omarchy-shutdown-log by
+# boot-logging-setup.sh. systemd-shutdown runs it as the very last step, after journald has stopped
+# and every filesystem is read-only, with $1 = poweroff|reboot|halt|kexec. It saves the kernel log
+# tail (systemd-shutdown's own unmount/sync steps included) to /var/log/omarchy-boot, so the end of
+# a shutdown that never finishes is no longer lost. Keeps the last 10. Never blocks the shutdown.
+DIR=/var/log/omarchy-boot
+KEEP=10
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+mount -o remount,rw / 2>/dev/null || exit 0
+mkdir -p "$DIR"
+f="$DIR/shutdown-$(date +%Y%m%d-%H%M%S).log"
+{
+  echo "action:   ${1:-unknown}"
+  echo "date:     $(date '+%Y-%m-%d %H:%M:%S %Z')"
+  echo "uptime:   $(cut -d' ' -f1 /proc/uptime) s"
+  echo "boot_id:  $(cat /proc/sys/kernel/random/boot_id)"
+  echo "kernel:   $(uname -r)"
+  echo "cmdline:  $(cat /proc/cmdline)"
+  echo
+  echo "--- still mounted ---"
+  cat /proc/mounts
+  echo
+  echo "--- kernel log, last 400 lines (seconds since boot) ---"
+  timeout 5 dmesg 2>&1 | tail -n 400
+} > "$f" 2>&1
+chgrp systemd-journal "$f" 2>/dev/null
+chmod 0640 "$f"
+ls -1t "$DIR"/shutdown-*.log 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do rm -f "$old"; done
+sync
+mount -o remount,ro / 2>/dev/null
+exit 0

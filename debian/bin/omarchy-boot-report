@@ -1,0 +1,170 @@
+#!/bin/bash
+# Debian port: how the last boots went, from the system journal (needs the systemd-journal group,
+# set up by boot-logging-setup.sh; no root). For each boot: start/end, length, whether an HDMI
+# display was plugged in at boot and whether its link came up, boot time, login screen, units that
+# timed out, kernel hung-task reports, and how it ended (clean reboot/power-off, power button held,
+# or the journal just stops). Boots that never reached the login screen are flagged as HANG.
+#
+# Usage: omarchy-boot-report [-l] [N]   N = number of boots (default 10), -l = also print the last
+#                                        lines of each boot that did not end cleanly
+set -uo pipefail
+
+count=10
+show_last=0
+for arg in "$@"; do
+  case $arg in
+    -l | --last-lines) show_last=1 ;;
+    -h | --help) sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *[!0-9]* | "") echo "usage: omarchy-boot-report [-l] [N]" >&2; exit 2 ;;
+    *) count=$arg ;;
+  esac
+done
+
+if ! journalctl -q -b 0 -n 1 _PID=1 2>/dev/null | grep -q .; then
+  echo "Can't read the system journal. Log out and back in once (you were added to the systemd-journal group)," >&2
+  echo "or run: sudo ~/.local/share/omarchy/debian/boot-logging-setup.sh" >&2
+  exit 1
+fi
+
+if [[ -t 1 ]]; then
+  bold=$'\e[1m' red=$'\e[1;31m' yellow=$'\e[33m' green=$'\e[32m' dim=$'\e[2m' off=$'\e[0m'
+else
+  bold="" red="" yellow="" green="" dim="" off=""
+fi
+
+SHUTDOWN_LOGS=/var/log/omarchy-boot
+
+fmt_dur() { # seconds -> "1 h 02 min", "4 min 05 s", "12 s"
+  local s=${1%.*}
+  if (( s >= 3600 )); then printf '%d h %02d min' $((s / 3600)) $((s % 3600 / 60))
+  elif (( s >= 60 )); then printf '%d min %02d s' $((s / 60)) $((s % 60))
+  else printf '%d s' "$s"
+  fi
+}
+
+# journal lines as "<seconds since boot> <message>"
+mono() { journalctl -q --no-pager -o short-monotonic "$@" 2>/dev/null | sed -E 's/^\[ *([0-9.]+)\] [^ ]+ /\1 /'; }
+
+report_boot() {
+  local idx=$1 id=$2 first=$3 last=$4
+  local start end length kern pid1 tail_lines
+  start=$(date -d "@$((first / 1000000))" '+%a %Y-%m-%d %H:%M:%S')
+  if [[ $(date -d "@$((first / 1000000))" +%F) == $(date -d "@$((last / 1000000))" +%F) ]]; then
+    end=$(date -d "@$((last / 1000000))" '+%H:%M:%S')
+  else
+    end=$(date -d "@$((last / 1000000))" '+%a %H:%M:%S')
+  fi
+  length=$(( (last - first) / 1000000 ))
+
+  kern=$(mono -b "$id" -k | awk '$1 < 120')
+  pid1=$(mono -b "$id" _PID=1 -p info)
+  tail_lines=$(mono -b "$id" -n 40)
+
+  # External display (HDMI): the DCP that reports the DP-to-HDMI state at boot, and whether its last
+  # hotplug in the first 2 minutes got an answer. The 2026-11-25 hangs stop right after a
+  # "cb_hotplug() connected:1, valid_mode:0" with no dcp_hotplug() after it.
+  local hdmi="no" link="" ext="" plugged
+  ext=$(grep -m1 -oE '[0-9a-f]+\.dcp: dcp_enable_dp2hdmi_hpd: DP2HDMI HPD connected:[01]' <<<"$kern")
+  if [[ $ext == *connected:1 ]]; then
+    hdmi="yes"
+  else
+    plugged=$(grep -m1 -E "${ext%%:*}: DP2HDMI HPD irq, connected:1" <<<"$kern" | cut -d' ' -f1)
+    [[ -n $plugged ]] && hdmi="later"
+  fi
+  ext=${ext%%:*}
+  if [[ $hdmi != "no" ]]; then
+    if grep -F "$ext:" <<<"$kern" | grep -E 'cb_hotplug|dcp_hotplug' | tail -n 1 | grep -q 'cb_hotplug() connected:1, valid_mode:0'; then
+      link="stalled"
+    else
+      link="up"
+    fi
+  fi
+
+  local startup greeter login
+  startup=$(grep -m1 -oE 'Startup finished in .* = [0-9.]+(min )?[0-9.]*s' <<<"$pid1" | sed -E 's/.* = //')
+  greeter=$(mono -b "$id" -t sddm-helper | grep -m1 'sddm-greeter:session): session opened' | cut -d' ' -f1)
+  login=$(mono -b "$id" -t sddm-helper | grep -m1 'pam_unix(sddm:session): session opened' | cut -d' ' -f1)
+
+  local timeouts hung
+  timeouts=$(sed -nE \
+    -e 's/^[0-9.]+ [^ ]+: ([^ ]+): [a-z-]+ operation timed out.*/\1/p' \
+    -e "s/^[0-9.]+ [^ ]+: ([^ ]+): State '[a-z-]+' timed out.*/\\1/p" \
+    -e 's/^[0-9.]+ [^ ]+: Job ([^ ]+)\/[a-z]+ timed out.*/\1/p' \
+    -e 's/^[0-9.]+ [^ ]+: Timed out waiting for device ([^ ]+).*/\1/p' <<<"$pid1" | sort -u | tr '\n' ' ')
+  hung=$(mono -b "$id" -k | grep -oE 'task [^ ]+ blocked for more than [0-9]+ seconds' | sed -E 's/task ([^ ]+) .*/\1/' | sort -u | tr '\n' ' ')
+
+  # How it ended
+  local ended clean=0 forced_at action shutdown_start hook=""
+  forced_at=$(grep -m1 'Triggering forced shutdown' <<<"$tail_lines" | cut -d' ' -f1)
+  if (( idx == 0 )); then
+    ended="${green}still running${off}"; clean=1
+  elif grep -q 'systemd-journald\[[0-9]*\]: Journal stopped' <<<"$tail_lines"; then
+    action=$(grep -oE 'Reached target (reboot|poweroff|halt|kexec)\.target' <<<"$pid1" | tail -n 1 | sed -E 's/.* (.*)\.target/\1/')
+    shutdown_start=$(mono -b "$id" -t systemd-logind | grep -m1 -E 'System is (rebooting|powering down|halting)' | cut -d' ' -f1)
+    local stopped
+    stopped=$(tail -n 1 <<<"$tail_lines" | cut -d' ' -f1)
+    ended="${green}clean ${action:-shutdown}${off}"
+    [[ -n $shutdown_start ]] && ended+=" (shutdown took $(fmt_dur "$(awk -v a="$shutdown_start" -v b="$stopped" 'BEGIN{print b-a}')"))"
+    clean=1
+  elif [[ -n $forced_at ]]; then
+    ended="${red}FORCED POWER-OFF${off} (power button held) at +$(fmt_dur "$forced_at")"
+  else
+    ended="${red}journal stops abruptly${off} (freeze, kernel crash or power loss)"
+  fi
+  # the shutdown hook's own log for this boot, if the shutdown got that far
+  if [[ -r $SHUTDOWN_LOGS ]]; then
+    hook=$(grep -l "^boot_id:  ${id:0:8}-${id:8:4}-${id:12:4}-${id:16:4}-${id:20:12}" "$SHUTDOWN_LOGS"/shutdown-*.log 2>/dev/null | head -n 1)
+  fi
+
+  # Verdict
+  local verdict=""
+  if (( ! clean )); then
+    if [[ -z $greeter ]]; then
+      verdict="${red}HANG during boot: no login screen${off}"
+    elif [[ -z $login ]]; then
+      verdict="${red}HANG at the login screen (nobody logged in)${off}"
+    else
+      verdict="${yellow}unclean end after login (session froze or was forced off)${off}"
+    fi
+  fi
+
+  printf '%sBoot %3s%s  %s%s%s  %s -> %s  (%s)\n' "$bold" "$idx" "$off" "$dim" "${id:0:8}" "$off" "$start" "$end" "$(fmt_dur "$length")"
+  [[ -n $verdict ]] && printf '  %s\n' "$verdict"
+  case $hdmi in
+    yes) printf '  HDMI at boot:   yes' ;;
+    later) printf '  HDMI at boot:   no, plugged in at +%s' "$(fmt_dur "$plugged")" ;;
+    no) printf '  HDMI at boot:   no' ;;
+  esac
+  if [[ $link == "stalled" ]]; then
+    printf ', %slink STALLED%s (%s never answered its last hotplug)\n' "$red" "$off" "$ext"
+  elif [[ $link == "up" ]]; then
+    printf ', link up\n'
+  else
+    printf '\n'
+  fi
+  if [[ -n $startup ]]; then
+    printf '  Boot finished:  %s\n' "$startup"
+  else
+    printf '  Boot finished:  %snever%s (systemd never reached the end of the boot)\n' "$red" "$off"
+  fi
+  if [[ -n $greeter ]]; then
+    printf '  Login screen:   at +%s%s\n' "$(fmt_dur "$greeter")" "${login:+, logged in at +$(fmt_dur "$login")}"
+  else
+    printf '  Login screen:   %snever shown%s\n' "$red" "$off"
+  fi
+  [[ -n $timeouts ]] && printf '  Timed out:      %s%s%s\n' "$yellow" "${timeouts% }" "$off"
+  [[ -n $hung ]] && printf '  Hung tasks:     %s%s%s (kernel stack traces: journalctl -k -b %s | grep -A30 "blocked for more")\n' "$yellow" "${hung% }" "$off" "$idx"
+  printf '  Ended:          %s\n' "$ended"
+  [[ -n $hook ]] && printf '  Shutdown log:   %s\n' "$hook"
+  if (( show_last && ! clean )); then
+    printf '  %sLast lines:%s\n' "$dim" "$off"
+    grep -v 'RTKit: syslog message: apComms.cpp:354: SMC HID Event' <<<"$tail_lines" | tail -n 8 | cut -c1-150 | sed 's/^/    +/'
+  fi
+  echo
+}
+
+journalctl --list-boots -o json -n "$count" 2>/dev/null |
+  jq -r '.[] | "\(.index) \(.boot_id) \(.first_entry) \(.last_entry)"' |
+  while read -r idx id first last; do
+    report_boot "$idx" "$id" "$first" "$last"
+  done

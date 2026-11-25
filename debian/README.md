@@ -55,6 +55,7 @@ This rebases the Debian patches onto the latest upstream Omarchy, rebuilds the a
 | Path | What it is |
 | --- | --- |
 | `system-setup.sh`, `user-setup.sh`, `login-setup.sh` | Install steps (root part, user part, login screen + boot splash) |
+| `boot-logging-setup.sh`, `system-shutdown/` | Boot/shutdown logging for diagnosing hangs (journal readable without root, a shutdown hook keeping the kernel log tail); `omarchy-boot-report` summarises the last boots |
 | `omarchy-debian` | Builds Omarchy's apps from their Arch recipes (a small makepkg-compatible runner) and runs updates |
 | `recipes/`, `patches/` | Recipe overrides and per-app fixes for Debian's Qt 6.8 / Poppler / KF6 (they fail loudly if upstream changes) |
 | `pkgmap` | Arch package names → Debian package names |
