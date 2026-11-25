@@ -46,6 +46,54 @@ if not rawget(_G, "__omarchy_compat_055_change_id") and hl.dsp.workspace.change_
   end
 end
 
+-- Monitor:set_workspace (0.56) shows a workspace on a monitor. monitor-workspaces.lua
+-- calls it after moving the workspace there, so on 0.55 focusing it does the same;
+-- focus then goes back to the monitor that had it. Monitors are HL.Monitor userdata
+-- sharing one metatable, but while the config loads 0.55 hands out placeholders, so
+-- the metatable's __index is wrapped the first time a getter returns a real monitor.
+-- Separately guarded so `hyprctl reload` picks it up.
+if not rawget(_G, "__omarchy_compat_055_monitor_set_workspace") then
+  _G.__omarchy_compat_055_monitor_set_workspace = true
+
+  local real_get_active_monitor = hl.get_active_monitor
+
+  local function set_workspace(monitor, args)
+    local focused = real_get_active_monitor()
+    hl.dispatch(hl.dsp.focus({ monitor = monitor.name }))
+    hl.dispatch(hl.dsp.focus({ workspace = tostring(args.workspace) }))
+    if focused and focused.name ~= monitor.name then
+      hl.dispatch(hl.dsp.focus({ monitor = focused.name }))
+    end
+  end
+
+  local patched = false
+  local function patch(monitor)
+    if patched or type(monitor) ~= "userdata" then return monitor end
+    local mt = getmetatable(monitor)
+    if type(mt) ~= "table" then return monitor end
+    patched = true
+    if monitor.set_workspace ~= nil then return monitor end
+    local index = mt.__index
+    mt.__index = function(self, key)
+      if key == "set_workspace" then return set_workspace end
+      if type(index) == "function" then return index(self, key) end
+      if type(index) == "table" then return index[key] end
+    end
+    return monitor
+  end
+
+  local real_get_monitor, real_get_monitors = hl.get_monitor, hl.get_monitors
+  hl.get_monitor = function(...) return patch(real_get_monitor(...)) end
+  hl.get_active_monitor = function(...) return patch(real_get_active_monitor(...)) end
+  hl.get_monitors = function(...)
+    local monitors = real_get_monitors(...)
+    if type(monitors) == "table" then
+      for _, monitor in ipairs(monitors) do patch(monitor) end
+    end
+    return monitors
+  end
+end
+
 if rawget(_G, "__omarchy_compat_055") then return end
 _G.__omarchy_compat_055 = true
 
