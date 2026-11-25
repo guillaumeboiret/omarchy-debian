@@ -98,6 +98,17 @@ assertEqual(dock.standInKey('foot', ['TerminalEmulator'], ['foot', 'omarchy-term
 assertEqual(dock.standInKey('foot', ['TerminalEmulator'], []), 'foot', 'an unpinned Terminal claims nothing')
 assertEqual(dock.standInKey('YouTube', ['Network'], standIns), 'YouTube', 'a web app keeps its own windows')
 assertEqual(dock.claimingEntryId('org.omarchy.hey', terminalEntries), 'HEY TUI', 'dock matches an entry that hands the terminal its app id')
+
+const looseEntries = [
+  { id: 'Slack', startupClass: 'chrome-app.slack.com__client-Default' },
+  { id: 'org.gnome.Nautilus', startupClass: '' },
+  { id: 'monologue', startupClass: 'monologue' }
+]
+assertEqual(dock.looseEntryId('slack', looseEntries), 'Slack', 'dock matches a window class to an entry id in any case')
+assertEqual(dock.looseEntryId('Chrome-App.Slack.com__client-default', looseEntries), 'Slack', 'dock matches a window class to StartupWMClass in any case')
+assertEqual(dock.looseEntryId('nautilus', looseEntries), 'org.gnome.Nautilus', 'dock matches a window class to the last part of a reverse-DNS id')
+assertEqual(dock.looseEntryId('Monologue', looseEntries), 'monologue', 'dock prefers an exact id over a reverse-DNS part')
+assertEqual(dock.looseEntryId('unknown', looseEntries), '', 'dock finds no entry for an unknown window class')
 assertEqual(dock.claimingEntryId('org.omarchy.agent', terminalEntries), '', 'dock leaves an app id no entry claims unclaimed')
 assertEqual(dock.claimingEntryId('Alacritty', terminalEntries), '', 'dock leaves a terminal of its own to its own entry')
 

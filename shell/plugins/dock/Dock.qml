@@ -51,7 +51,20 @@ Item {
     var entry = DesktopEntries.heuristicLookup(appId)
     if (entry) return entry
     var id = DockModel.claimingEntryId(appId, root.terminalEntries)
+    if (id) return DesktopEntries.byId(id)
+    // Debian port: a window class that differs from its entry only in case,
+    // or names the entry by its last reverse-DNS part, still finds it.
+    id = DockModel.looseEntryId(appId, root.looseEntries)
     return id ? DesktopEntries.byId(id) : null
+  }
+
+  // Debian port: every entry's id and window class, for entryForAppId's last try.
+  readonly property var looseEntries: {
+    var values = DesktopEntries.applications.values
+    var out = []
+    for (var i = 0; i < values.length; i++)
+      out.push({ id: values[i].id, startupClass: values[i].startupClass })
+    return out
   }
 
   // A pinned app that is not installed has nothing to launch, so it is left
@@ -79,7 +92,16 @@ Item {
       })
     }
 
-    return DockModel.orderItems(DockModel.buildItems(pinned, windows), root.order)
+    var items = DockModel.orderItems(DockModel.buildItems(pinned, windows), root.order)
+    // Debian port: an app runs, and its icon gets the dot, while it has any
+    // window at all, even one the dock leaves out, such as a terminal app
+    // tucked away on the scratchpad.
+    var running = {}
+    for (var w = 0; w < windows.length; w++) {
+      if (windows[w].hasEntry || DockModel.isDockWindow(windows[w])) running[windows[w].key] = true
+    }
+    for (var k = 0; k < items.length; k++) items[k].running = items[k].windows.length > 0 || running[items[k].key] === true
+    return items
   }
 
   readonly property var itemsByKey: {
@@ -364,6 +386,14 @@ Item {
     // The layout commands call this after changing a workspace's mode.
     function refresh(): void { root.refresh() }
     function apps(): void { appGrid.toggle() }
+    // Debian port: brings an auto-hidden dock up for a few seconds, and lists
+    // the dock's apps with a * after those that run (the dot under the icon).
+    function peek(): void {
+      for (var i = 0; i < docks.instances.length; i++) docks.instances[i].peek()
+    }
+    function status(): string {
+      return root.items.map(function(item) { return item.key + (item.running ? "*" : "") }).join(" ")
+    }
   }
 
   // An app dragged out of the app grid: the grid holds the pointer and

@@ -226,6 +226,19 @@ PanelWindow {
 
   onAutohideChanged: window.revealed = false
 
+  // Debian port: shows an auto-hidden dock for a few seconds (IPC peek).
+  function peek() {
+    if (!window.shown || !window.autohide) return
+    window.revealed = true
+    peekTimer.restart()
+  }
+
+  Timer {
+    id: peekTimer
+    interval: 3000
+    onTriggered: hideTimer.restart()
+  }
+
   Timer {
     id: hideTimer
     // Long enough to cross a gap between the edge and the icons, no longer.
@@ -529,6 +542,31 @@ PanelWindow {
       transformOrigin: window.popOrigin
 
       Behavior on scale { NumberAnimation { duration: Style.duration(120); easing.type: Easing.OutCubic } }
+    }
+
+    // Debian port: a running app has a small dot between its icon and the
+    // screen edge, like the macOS dock. It travels with the icon in a drag.
+    Rectangle {
+      readonly property int size: Math.max(3, Math.round(4 * Style.fontScale))
+      readonly property int offset: window.iconInset + window.iconSize + Style.spacing.xxs
+      readonly property int centered: Math.round((window.slotSize - size) / 2)
+
+      visible: !!appSlot.modelData && appSlot.modelData.running === true
+      width: size
+      height: size
+      radius: size / 2
+      color: Commons.Color.popups.text
+      opacity: 0.75
+      x: window.position === "left" ? window.slotSize - offset - size
+        : window.position === "right" ? offset
+        : centered
+      y: window.position === "top" ? window.slotSize - offset - size
+        : window.position === "bottom" ? offset
+        : centered
+      transform: Translate {
+        x: window.vertical ? 0 : appSlot.displayedShift
+        y: window.vertical ? appSlot.displayedShift : 0
+      }
     }
 
     // With animations off it holds still rather than spinning through

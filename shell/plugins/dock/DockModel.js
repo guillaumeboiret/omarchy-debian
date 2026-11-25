@@ -71,6 +71,26 @@ function claimingEntryId(appId, entries) {
   return ""
 }
 
+// Debian port: the entry a window class names loosely, when no exact lookup
+// found one: its id or StartupWMClass in another case, or the last part of a
+// reverse-DNS id (org.gnome.Nautilus for nautilus). Entries are
+// { id, startupClass }.
+function looseEntryId(appId, entries) {
+  var id = String(appId || "").trim().toLowerCase()
+  if (!id) return ""
+  var list = entries || []
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].id || "").toLowerCase() === id) return list[i].id
+    if (String(list[i].startupClass || "").toLowerCase() === id) return list[i].id
+  }
+  var last = id.slice(id.lastIndexOf(".") + 1)
+  for (var j = 0; j < list.length; j++) {
+    var entryId = String(list[j].id || "").toLowerCase()
+    if (entryId.slice(entryId.lastIndexOf(".") + 1) === last) return list[j].id
+  }
+  return ""
+}
+
 // The launcher's Terminal and Browser open the default terminal and browser,
 // whose windows carry that app's own id. A pinned Terminal or Browser claims
 // the windows of any app in its category, unless that app is pinned itself.
@@ -217,6 +237,7 @@ if (typeof module !== "undefined") {
     isDockWindow: isDockWindow,
     isMinimizedWorkspace: isMinimizedWorkspace,
     claimingEntryId: claimingEntryId,
+    looseEntryId: looseEntryId,
     standInKey: standInKey,
     buildItems: buildItems,
     orderItems: orderItems,
