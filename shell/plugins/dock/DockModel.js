@@ -264,11 +264,12 @@ function gridCells(entries, query, agents) {
 }
 
 // An argv vector, never a shell string: the prompt is one argument.
+// --prefill types it into the agent's input box without sending it.
 // omarchy-agent hands it to each agent its own way (after -- or bound to a
 // flag, so a leading dash stays literal), in a new terminal on the current
 // workspace, under the same window class as the agent's dock launcher.
 function askAgentArgv(agentId, prompt) {
-  return ["omarchy-agent", "--agent", String(agentId), "--app-id=org.omarchy." + agentId, "--prompt", String(prompt || "").trim()]
+  return ["omarchy-agent", "--agent", String(agentId), "--app-id=org.omarchy." + agentId, "--prefill", "--prompt", String(prompt || "").trim()]
 }
 
 if (typeof module !== "undefined") {

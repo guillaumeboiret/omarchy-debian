@@ -55,6 +55,12 @@ while (($#)); do
       prompt=${2:?--prompt needs a value}
       shift 2
       ;;
+    # Debian port: the prompt is typed into the agent's input box, not sent,
+    # so it can be edited first (the app grid's "Ask <agent>" tiles).
+    --prefill)
+      prefill=true
+      shift
+      ;;
     *)
       echo "Unexpected argument: $1" >&2
       echo "To pass a prompt: omarchy agent prompt \"$*\"" >&2
@@ -128,6 +134,21 @@ fi
 if omarchy-cmd-missing "$agent" && ! { [[ $agent == "openclaw" ]] && omarchy-pkg-present openclaw; }; then
   echo "$agent is not installed. Choose an installed agent with: omarchy default agent <name>" >&2
   exit 1
+fi
+
+# Debian port: a prefilled prompt starts the agent bare, and Ghostty types the
+# prompt into it on open (its `input` option) with no Enter, so it waits in the
+# input box. A newline would send it, so lines join with spaces. Without
+# Ghostty the prompt goes on the clipboard instead.
+if [[ ${prefill:-} == "true" && -n ${prompt:-} ]]; then
+  prefill_text=${prompt//$'\n'/ }
+  unset prompt
+  if [[ $inline == "true" ]] || omarchy-cmd-missing ghostty; then
+    printf '%s' "$prefill_text" | wl-copy
+    omarchy-notification-send -g 󰅇 "$(omarchy-i18n agents.promptOnClipboard "$agent")" \
+      "$(omarchy-i18n agents.promptOnClipboardBody)"
+    prefill_text=""
+  fi
 fi
 
 # Agents launched from the keybinding or menu run unattended, so each one starts
@@ -412,5 +433,8 @@ if [[ $inline == "true" ]]; then
 else
   # A fixed app-id rather than the default org.omarchy.<binary>, so every agent
   # window shares one class for window rules and themes to single out.
+  if [[ -n ${prefill_text:-} ]]; then
+    exec setsid uwsm-app -- ghostty --class="$app_id" "--input=raw:$prefill_text" -e "${command[@]}"
+  fi
   exec omarchy-launch-tui --app-id="$app_id" "${command[@]}"
 fi

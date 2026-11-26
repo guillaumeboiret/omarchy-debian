@@ -160,7 +160,7 @@ assertEqual(withMatches[2].askAgent, 'pi', 'the agent tiles follow the apps, the
 const hostile = `-p "$(touch /tmp/pwned)"; rm -rf ~ 'x'`
 assertDeepEqual(
   dock.askAgentArgv('codex', hostile),
-  ['omarchy-agent', '--agent', 'codex', '--app-id=org.omarchy.codex', '--prompt', hostile],
+  ['omarchy-agent', '--agent', 'codex', '--app-id=org.omarchy.codex', '--prefill', '--prompt', hostile],
   'an agent tile passes the query to omarchy-agent as one literal argument'
 )
 JS
