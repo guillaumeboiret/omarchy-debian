@@ -146,4 +146,7 @@ const windows = [held(1, ['terminal*']), held(3, ['transparent-window*', 'notch-
 assertEqual(bar.notchFullscreenStrip(windows, 3), 37, 'a held window gives its band height')
 assertEqual(bar.notchFullscreenStrip(windows, 1), 0, 'another workspace has no band')
 assertEqual(bar.notchFullscreenStrip([held(3, ['notch-fullscreen*'])], 3), 0, 'a tag without a height is ignored')
+const scratchpad = [{ workspace: { id: -98, name: 'special:scratchpad' }, lastIpcObject: { tags: ['notch-fullscreen:37*'] } }]
+assertEqual(bar.notchFullscreenStrip(scratchpad, 1, 'special:scratchpad'), 37, 'a held window on the open special workspace gives the band')
+assertEqual(bar.notchFullscreenStrip(scratchpad, 1, ''), 0, 'a closed special workspace has no band')
 JS

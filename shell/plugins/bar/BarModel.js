@@ -670,12 +670,15 @@ function fullscreenOn(toplevels, workspaceId) {
 
 // Debian port: a window held full screen below a camera notch carries the tag
 // "notch-fullscreen:<logical px>" (default/hypr/notch-fullscreen.lua). The
-// band that height above it, on that workspace, or 0.
-function notchFullscreenStrip(toplevels, workspaceId) {
+// band that height above it, on that workspace or on the special workspace
+// open over it (its name, "" when none is), or 0.
+function notchFullscreenStrip(toplevels, workspaceId, specialName) {
   var list = toplevels || []
   for (var i = 0; i < list.length; i++) {
     var toplevel = list[i]
-    if (!toplevel || !toplevel.workspace || toplevel.workspace.id !== workspaceId) continue
+    var workspace = toplevel && toplevel.workspace
+    if (!workspace) continue
+    if (workspace.id !== workspaceId && !(specialName && workspace.name === specialName)) continue
     var tags = (toplevel.lastIpcObject && toplevel.lastIpcObject.tags) || []
     for (var j = 0; j < tags.length; j++) {
       var match = /^notch-fullscreen:(\d+)\*?$/.exec(String(tags[j]))

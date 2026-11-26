@@ -1630,8 +1630,34 @@ Item {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event && String(event.name) === "fullscreen") Hyprland.refreshToplevels()
+      if (!event) return
+      var name = String(event.name)
+      if (name === "fullscreen") {
+        Hyprland.refreshToplevels()
+      } else if (name === "activespecial") {
+        // "<workspace name>,<monitor>", the name empty once it closes.
+        var data = String(event.data)
+        var comma = data.lastIndexOf(",")
+        if (comma < 0) return
+        var open = Object.assign({}, root.openSpecial)
+        open[data.slice(comma + 1)] = data.slice(0, comma)
+        root.openSpecial = open
+      }
     }
+  }
+
+  // Debian port: the special workspace open on each monitor, by monitor name
+  // ("" once closed), for the notch band. Quickshell does not follow it, so it
+  // comes from Hyprland's activespecial events; a monitor not heard from yet
+  // answers from its last refresh.
+  property var openSpecial: ({})
+
+  function specialOn(monitor) {
+    if (!monitor) return ""
+    var name = openSpecial[monitor.name]
+    if (name !== undefined) return name
+    var ipc = monitor.lastIpcObject
+    return (ipc && ipc.specialWorkspace && ipc.specialWorkspace.name) || ""
   }
 
   Variants {
@@ -1692,15 +1718,16 @@ Item {
     exclusiveZone: Math.max(thickness, notchFullscreen)
 
     // Debian port: a window held full screen below the camera notch on this
-    // screen's workspace (default/hypr/notch-fullscreen.lua) covers the strip
-    // with a black band of the notch's height, shown even if the bar is hidden,
-    // whose exclusive zone keeps the window below the notch. The widgets stay
-    // laid out and shown underneath, so the bar comes back exactly as it was.
+    // screen's workspace, or on the special workspace open over it
+    // (default/hypr/notch-fullscreen.lua), covers the strip with a black band
+    // of the notch's height, shown even if the bar is hidden, whose exclusive
+    // zone keeps the window below the notch. The widgets stay laid out and
+    // shown underneath, so the bar comes back exactly as it was.
     readonly property int notchFullscreen: {
       if (root.position !== "top") return 0
       var monitor = Hyprland.monitorFor(screen)
       var workspace = monitor ? monitor.activeWorkspace : null
-      return workspace ? BarModel.notchFullscreenStrip(Hyprland.toplevels.values, workspace.id) : 0
+      return BarModel.notchFullscreenStrip(Hyprland.toplevels.values, workspace ? workspace.id : null, root.specialOn(monitor))
     }
     readonly property bool parked: root.barHidden && notchFullscreen <= 0
 

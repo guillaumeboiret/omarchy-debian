@@ -7,8 +7,9 @@
 -- is fullscreen (internal 1, client 2), with no outer gaps. It carries the tag
 -- notch-fullscreen:<logical px>; the bar (shell/plugins/bar, Debian patch)
 -- reads it and becomes a black band of that height, with that exclusive zone,
--- so the window fills everything below the notch. External monitors, and
--- special workspaces, keep Hyprland's own fullscreen.
+-- so the window fills everything below the notch. The scratchpad and the other
+-- special workspaces are held the same way; the bar shows the band while one
+-- is open. External monitors keep Hyprland's own fullscreen.
 --
 -- Maximized works for floating windows and the dwindle and master layouts. A
 -- tiled window in any other layout (scrolling has no maximized state) is
@@ -85,8 +86,7 @@ local function tag(window, change)
 end
 
 local function eligible(window)
-  local workspace = window.workspace
-  return workspace and not workspace.special and M.strip(window.monitor) or 0
+  return window.workspace and M.strip(window.monitor) or 0
 end
 
 local function dispatch(dsp)
@@ -103,11 +103,17 @@ end
 
 -- Outer gaps would leave a frame around a full screen window. The rule only
 -- matches while the workspace holds a maximized window, so it needs no undoing;
--- leaving puts back the gaps a later maximize there would get.
-local function set_gaps(workspace_id, gaps)
-  if workspace_id then
-    hl.workspace_rule({ workspace = "r[" .. workspace_id .. "-" .. workspace_id .. "]f[1]", gaps_out = gaps })
+-- leaving puts back the gaps a later maximize there would get. A special or
+-- named workspace has no id a range can hold, so its whole name selects it.
+local function set_gaps(workspace, gaps)
+  if not workspace or not workspace.id then
+    return
   end
+  local selector = "r[" .. workspace.id .. "-" .. workspace.id .. "]"
+  if workspace.id < 1 then
+    selector = "n[s:" .. workspace.name .. "]n[e:" .. workspace.name .. "]"
+  end
+  hl.workspace_rule({ workspace = selector .. "f[1]", gaps_out = gaps })
 end
 
 local function layout_msg(message)
@@ -147,7 +153,7 @@ local function hold(window, strip)
     end
   end
 
-  set_gaps(window.workspace.id, 0)
+  set_gaps(window.workspace, 0)
   tag(window, "+" .. TAG .. strip)
   state(window, 1, 2)
 end
@@ -185,7 +191,7 @@ end
 local function release(window, held, mode)
   local floated = find_tag(window, FLOATED)
 
-  set_gaps(window.workspace and window.workspace.id, hl.get_config(window.floating and "general:float_gaps" or "general:gaps_out"))
+  set_gaps(window.workspace, hl.get_config(window.floating and "general:float_gaps" or "general:gaps_out"))
   tag(window, "-" .. held)
   state(window, 0, 0)
 
@@ -244,9 +250,9 @@ local function on_move(window, workspace)
     tag(window, "-" .. floated)
     tag(window, "+" .. FLOATED .. "-1:0:0")
   end
-  local strip = workspace and not workspace.special and M.strip(workspace.monitor) or 0
+  local strip = workspace and M.strip(workspace.monitor) or 0
   if strip > 0 then
-    set_gaps(workspace.id, 0)
+    set_gaps(workspace, 0)
     if held ~= TAG .. strip then
       tag(window, "-" .. held)
       tag(window, "+" .. TAG .. strip)
@@ -264,7 +270,7 @@ local function repair()
     if held then
       local strip = eligible(window)
       if window.fullscreen == 1 and window.fullscreen_client == 2 then
-        set_gaps(window.workspace.id, 0)
+        set_gaps(window.workspace, 0)
       elseif window.fullscreen_client == 2 and strip > 0 then
         tag(window, "-" .. held)
         hold(window, strip)
