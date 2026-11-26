@@ -14,6 +14,23 @@ local box = 2
 
 local CONSOLE = "special:qconsole"
 
+-- Debian port: the size a lone console was dragged to, as shares of the usable
+-- screen ({ wide = , tall = }), or nil for the default panel above. It is kept
+-- in a state file so a config reload or a new login opens it the same size.
+local SIZE_FILE = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state")) .. "/omarchy/qconsole-size"
+local sized = nil
+
+do
+  local file = io.open(SIZE_FILE, "r")
+  if file then
+    local wide, tall = (file:read("*l") or ""):match("^([%d.]+) ([%d.]+)$")
+    file:close()
+    if wide and tall then
+      sized = { wide = tonumber(wide), tall = tonumber(tall) }
+    end
+  end
+end
+
 -- Seed the console with the default agent the first time it opens, rather than
 -- at boot, so nothing is running until it is wanted. The exec rule has to pin
 -- the workspace itself: Hyprland only tags a spawn with the workspace it came
@@ -109,10 +126,10 @@ local function fit(monitor)
   height = height / monitor.scale - reserved.top - reserved.bottom
   width = width / monitor.scale - reserved.left - reserved.right
 
-  local tall = math.floor(height * share)
+  local tall = math.floor(height * (sized and sized.tall or share))
   local wide = width
   if alone() then
-    wide = math.min(width, tall * box)
+    wide = sized and math.floor(width * sized.wide) or math.min(width, tall * box)
   end
 
   return cover(math.floor((width - wide) / 2), math.floor(height - tall))
@@ -195,6 +212,130 @@ hl.on("window.open", recount)
 hl.on("window.destroy", recount)
 hl.on("window.move_to_workspace", recount)
 hl.on("window.update_rules", recount)
+
+-- Debian port: dragging the console's left, right or bottom edge resizes it
+-- about its center. It stays tiled, so it cannot be moved: the drag rewrites
+-- the gaps that size it, the two sides together, and the top stays flush.
+-- Hyprland has no resize event, and a lone tiled window ignores its own border
+-- resize, so a press bind starts a timer that follows the pointer and a release
+-- bind ends it and saves the size. Only a console holding one window has a
+-- panel to resize; a second app has the full width (see alone()).
+local GRAB = 14
+local MIN_WIDE, MIN_TALL = 320, 160
+local POLL_MS = 16
+local MAX_TICKS = 120000 / POLL_MS
+
+local resize
+
+local function work_area(monitor)
+  if not monitor or not monitor.scale or monitor.scale <= 0 then
+    return nil
+  end
+  local width, height = monitor.width, monitor.height
+  if monitor.transform % 2 == 1 then
+    width, height = height, width
+  end
+  local reserved = monitor.reserved or { top = 0, bottom = 0, left = 0, right = 0 }
+  return width / monitor.scale - reserved.left - reserved.right, height / monitor.scale - reserved.top - reserved.bottom
+end
+
+local function stop_resize()
+  if resize and resize.timer then
+    resize.timer:set_enabled(false)
+  end
+  resize = nil
+end
+
+local function follow()
+  if not resize then
+    return
+  end
+  resize.ticks = resize.ticks + 1
+  local cursor = hl.get_cursor_pos()
+  if resize.ticks > MAX_TICKS or not cursor then
+    stop_resize()
+    return
+  end
+
+  local wide = resize.wide
+  if resize.sides then
+    wide = math.max(MIN_WIDE, math.min(resize.width, 2 * math.abs(cursor.x - resize.center)))
+  end
+  local tall = resize.tall
+  if resize.bottom then
+    tall = math.max(MIN_TALL, math.min(resize.height, cursor.y - resize.top))
+  end
+
+  sized = { wide = wide / resize.width, tall = tall / resize.height }
+  refit(resize.monitor)
+end
+
+local function start_resize()
+  stop_resize()
+
+  local ws = hl.get_workspace(CONSOLE)
+  if not ws or not ws.visible or not alone() then
+    return
+  end
+  local cursor = hl.get_cursor_pos()
+  local window
+  for _, w in ipairs(hl.get_workspace_windows(CONSOLE) or {}) do
+    if not w.floating then
+      window = w
+    end
+  end
+  if not cursor or not window then
+    return
+  end
+
+  local at, size = window.at, window.size
+  local left, right, bottom = at.x, at.x + size.x, at.y + size.y
+  local in_rows = cursor.y >= at.y and cursor.y <= bottom + GRAB
+  local in_cols = cursor.x >= left - GRAB and cursor.x <= right + GRAB
+  local sides = in_rows and (math.abs(cursor.x - left) <= GRAB or math.abs(cursor.x - right) <= GRAB)
+  local below = in_cols and math.abs(cursor.y - bottom) <= GRAB
+  if not sides and not below then
+    return
+  end
+
+  local monitor = console_monitor()
+  local width, height = work_area(monitor)
+  if not width then
+    return
+  end
+
+  resize = {
+    monitor = monitor,
+    width = width,
+    height = height,
+    center = at.x + size.x / 2,
+    top = at.y,
+    wide = size.x,
+    tall = size.y,
+    sides = sides,
+    bottom = below,
+    ticks = 0,
+  }
+  resize.timer = hl.timer(follow, { type = "repeat", timeout = POLL_MS })
+end
+
+local function end_resize()
+  if not resize then
+    return
+  end
+  stop_resize()
+  if sized then
+    os.execute("mkdir -p '" .. SIZE_FILE:match("^(.*)/") .. "'")
+    local file = io.open(SIZE_FILE, "w")
+    if file then
+      file:write(string.format("%.4f %.4f\n", sized.wide, sized.tall))
+      file:close()
+    end
+  end
+end
+
+hl.bind("mouse:272", start_resize, { ignore_mods = true, non_consuming = true, transparent = true })
+hl.bind("mouse:272", end_resize, { release = true, ignore_mods = true, non_consuming = true, transparent = true })
 
 -- The direction names the edge the offset is measured from, not where the
 -- workspace goes: "slide top" drops it down into view, and "slide bottom"
