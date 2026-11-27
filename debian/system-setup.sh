@@ -172,8 +172,11 @@ fi
 #     Without these, Debian's 4 GiB zram default fills, the kernel OOM killer fires too late, and
 #     Hyprland aborts when the GPU (shared RAM on Apple Silicon) can't allocate buffers.
 #     Debian's kernel already leaves zswap off, so Omarchy's zswap tmpfiles rule isn't needed.
+#     95-debian.conf doubles the zram size: at 1x, a 16G machine full of agent sessions still hit
+#     oomd's swap limit and lost a whole app scope.
 apt-get install -y systemd-oomd
 install -Dm644 "$OM/default/systemd/zram-generator.conf.d/90-omarchy.conf" /etc/systemd/zram-generator.conf.d/90-omarchy.conf
+install -Dm644 "$OM/debian/zram-generator.conf.d/95-debian.conf" /etc/systemd/zram-generator.conf.d/95-debian.conf
 install -Dm644 "$OM/etc/sysctl.d/99-omarchy-sysctl.conf" /etc/sysctl.d/99-omarchy-sysctl.conf
 install -Dm644 "$OM/etc/systemd/oomd.conf.d/10-omarchy.conf" /etc/systemd/oomd.conf.d/10-omarchy.conf
 install -Dm644 "$OM/default/systemd/user/app.slice.d/10-oomd.conf" /usr/lib/systemd/user/app.slice.d/10-oomd.conf
